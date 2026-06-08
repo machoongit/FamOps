@@ -1,0 +1,44 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --card: #1c1c1c;
+  --border: rgba(255,255,255,.08);
+  --gold: #f5a623;
+  --gold2: #ffc107;
+  --blue: #4a90e2;
+  --orange: #ff6b35;
+  --red: #e53935;
+  --purple: #9c27b0;
+  --pink: #e91e8c;
+  --green: #43a047;
+  --text: #ffffff;
+  --muted: #888;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Nunito', sans-serif;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { min-height: 100vh; min-height: 100dvh; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+/* Touch targets */
+button { touch-action: manipulation; }
+
+/* Selection */
+::selection { background: var(--gold); color: #000; }
