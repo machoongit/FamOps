@@ -3,15 +3,18 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 import { PageWrap, Card, Btn, Input, Modal, ModalTitle, Toast, SectionTitle, Badge, ProgressBar, RankBadge, PointsPill, Empty } from '../components'
-import { AVATARS, COLORS, RANKS, getRank, getNextRank, BADGES, todayKey, weekKey, monthKey } from '../constants'
+import { AVATARS, COLORS, getRank, getNextRank, BADGES, todayKey, weekKey, monthKey } from '../constants'
 
 export default function ProfilePage() {
+  const navigate = useNavigate()
   const {
     currentUser, updateUser, logout,
     points, badges, strikes, weekendStatus,
     completions, learnProgress, readingLog, writingLog,
-    rewards, spendPoints, saveRequests, requests,
-    punishments, settings,
+    rewards,
+    redemptions, saveRedemptions, logActivity,
+    activityLog,
+    punishments, settings, effectiveRanks,
   } = useAuth()
 
   const [modal, setModal] = useState(null)
@@ -19,14 +22,13 @@ export default function ProfilePage() {
   const [newColor,  setNewColor]  = useState(currentUser.color)
   const [newName,   setNewName]   = useState(currentUser.name)
   const [toast, setToast]         = useState(null)
-  const navigate = useNavigate()
   const color = settings?.primaryColor || '#f5a623'
 
   const myPoints  = points?.[currentUser.id] || 0
   const myBadges  = badges?.[currentUser.id] || []
-  const myRank    = getRank(myPoints)
-  const nextRank  = getNextRank(myPoints)
-  const allRanks  = RANKS
+  const myRank    = getRank(myPoints, effectiveRanks)
+  const nextRank  = getNextRank(myPoints, effectiveRanks)
+  const allRanks  = effectiveRanks
 
   const showToast = (msg, bg) => { setToast({ msg, bg: bg || color }); setTimeout(() => setToast(null), 2600) }
 
@@ -48,21 +50,31 @@ export default function ProfilePage() {
   const strikesThisWeek = strikes?.[currentUser.id]?.[week] || 0
 
   const redeemReward = (r) => {
-    if (myPoints < r.cost) { showToast("Not enough points!", '#e53935'); return }
-    spendPoints(currentUser.id, r.cost)
-    showToast(`Redeemed: ${r.label}! 🎉`)
+    if (myPoints < r.cost) { showToast('Not enough points!', '#e53935'); return }
+    // Check if already pending
+    const already = redemptions.some(rd => rd.rewardId === r.id && rd.userId === currentUser.id && rd.status === 'pending')
+    if (already) { showToast('Already requested — waiting for approval', '#ff6b35'); return }
+    // Check quantity limit
+    if (r.limit > 0) {
+      const used = redemptions.filter(rd => rd.rewardId === r.id && rd.userId === currentUser.id && rd.status === 'approved').length
+      if (used >= r.limit) { showToast('You\'ve hit the limit for this reward!', '#e53935'); return }
+    }
+    saveRedemptions([...redemptions, { id:'rd'+Date.now(), userId:currentUser.id, userName:currentUser.name, userAvatar:currentUser.avatar, userColor:currentUser.color, rewardId:r.id, rewardLabel:r.label, rewardIcon:r.icon, cost:r.cost, status:'pending', submittedAt:new Date().toISOString() }])
+    logActivity(currentUser.id, 'redemption', `Requested: ${r.label}`, 0)
+    showToast(`Request sent! Waiting for parent approval 📨`)
   }
 
   return (
     <PageWrap>
       {/* Profile header */}
+      <button onClick={() => navigate('/home')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer', marginBottom:16 }}>← Home</button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 22 }}>
         <div onClick={() => setModal('editProfile')} style={{ width: 72, height: 72, borderRadius: 20, background: currentUser.color + '22', border: `3px solid ${currentUser.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem', cursor: 'pointer', flexShrink: 0 }}>
           {currentUser.avatar}
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: "'Fredoka One',cursive", fontSize: '1.5rem', color: currentUser.color }}>{currentUser.name}</div>
-          <RankBadge xp={myPoints} compact />
+          <RankBadge xp={myPoints} compact ranks={effectiveRanks} />
           <div style={{ marginTop: 4 }}><PointsPill points={myPoints} color={color} /></div>
         </div>
         <Btn sm variant='ghost' onClick={() => setModal('editProfile')}>Edit</Btn>
@@ -139,8 +151,8 @@ export default function ProfilePage() {
               <div style={{ fontWeight: 800, fontSize: '.9rem' }}>{r.label}</div>
               <div style={{ fontSize: '.72rem', color: '#f5a623', fontWeight: 700 }}>⭐ {r.cost} points</div>
             </div>
-            <Btn sm variant={myPoints >= r.cost ? 'gold' : 'ghost'} onClick={() => redeemReward(r)} disabled={myPoints < r.cost}>
-              {myPoints >= r.cost ? 'Redeem' : 'Need more'}
+            <Btn sm variant={myPoints >= r.cost ? 'gold' : 'ghost'} onClick={() => redeemReward(r)} disabled={myPoints < r.cost || redemptions.some(rd=>rd.rewardId===r.id&&rd.userId===currentUser.id&&rd.status==='pending')}>
+              {redemptions.some(rd=>rd.rewardId===r.id&&rd.userId===currentUser.id&&rd.status==='pending') ? '⏳ Pending' : myPoints >= r.cost ? 'Request' : 'Need more'}
             </Btn>
           </div>
         ))
@@ -155,6 +167,41 @@ export default function ProfilePage() {
         </div>
         <ProgressBar pct={Math.min(Math.round((lessonsTotal / 80) * 100), 100)} />
       </Card>
+
+      {/* Activity History */}
+      {(activityLog?.[currentUser.id]||[]).length > 0 && (
+        <>
+          <SectionTitle style={{ marginTop: 8 }}>Recent Activity</SectionTitle>
+          <Card>
+            {[...(activityLog?.[currentUser.id]||[])].reverse().slice(0,15).map(a => (
+              <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
+                <div style={{ fontSize:'.8rem', flex:1, fontWeight:600 }}>{a.desc}</div>
+                <div style={{ fontSize:'.7rem', color:'#555', fontWeight:600 }}>{new Date(a.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                {a.pts > 0 && <div style={{ fontSize:'.72rem', fontWeight:800, color }}> +{a.pts}pts</div>}
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+
+      {/* Pending redemptions */}
+      {redemptions.filter(r=>r.userId===currentUser.id).length > 0 && (
+        <>
+          <SectionTitle style={{ marginTop: 8 }}>Reward Requests</SectionTitle>
+          {redemptions.filter(r=>r.userId===currentUser.id).slice(-5).reverse().map(r => (
+            <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'#1c1c1c', borderRadius:12, marginBottom:8, borderLeft:`3px solid ${r.status==='approved'?'#22c55e':r.status==='denied'?'#e53935':'#f5a623'}` }}>
+              <div style={{ fontSize:'1.3rem' }}>{r.rewardIcon}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, fontSize:'.85rem' }}>{r.rewardLabel}</div>
+                <div style={{ fontSize:'.7rem', color:'#555', fontWeight:600 }}>⭐ {r.cost} pts</div>
+              </div>
+              <Badge color={r.status==='approved'?'#22c55e':r.status==='denied'?'#e53935':'#f5a623'} bg='rgba(255,255,255,.05)'>
+                {r.status==='approved'?'✓ Approved':r.status==='denied'?'✗ Denied':'⏳ Pending'}
+              </Badge>
+            </div>
+          ))}
+        </>
+      )}
 
       {/* Sign out */}
       <Btn full variant='ghost' style={{ marginTop: 8 }} onClick={() => { logout(); navigate('/') }}>

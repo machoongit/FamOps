@@ -1,12 +1,10 @@
+import { useNavigate } from 'react-router-dom'
 // pages/LearnPage.jsx — PowerPoint-style lessons
 import { useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { PageWrap, Card, Btn, Input, SectionTitle, ProgressBar, Toast, Modal, ModalTitle, Badge, Empty } from '../components'
 import { SUBJECTS } from '../data/curriculum'
 import { todayKey, getRank } from '../constants'
-
-const QUIZ_PASS  = 4
-const RETRY_HRS  = 24
 
 // Slide background themes
 const SLIDE_THEMES = {
@@ -18,11 +16,14 @@ const SLIDE_THEMES = {
   challenge: { bg: 'linear-gradient(135deg,#1a0a00,#2a1200)', accent: '#ff6b35' },
 }
 
-function SlideView({ lesson, subject, onDone, onBack, uid, quizHistory, saveQuizHistory, learnProgress, completeLesson, addPoints, isParent, showToast, color }) {
+function SlideView({ lesson, subject, onDone, onBack, uid, quizHistory, saveQuizHistory, learnProgress, completeLesson, addPoints, isParent, showToast, color, settings }) {
   const [slide, setSlide]           = useState(0)
   const [phase, setPhase]           = useState('slides') // slides | quiz
   const [answers, setAnswers]       = useState({})
   const [submitted, setSubmitted]   = useState(false)
+
+  const QUIZ_PASS = settings?.quizPassScore ?? 4
+  const RETRY_HRS = settings?.quizRetryHours ?? 24
 
   const slides   = lesson.slides || []
   const quiz     = lesson.quiz || []
@@ -57,7 +58,7 @@ function SlideView({ lesson, subject, onDone, onBack, uid, quizHistory, saveQuiz
   if (phase === 'quiz') {
     const allAnswered = Object.keys(answers).length === quiz.length
     return (
-      <div style={{ minHeight:'100vh', background:'#0a0a0a', padding:'16px 14px 90px' }}>
+      <div style={{ minHeight:'100vh', background:'#0a0a0a', padding:'16px 14px 24px' }}>
         <div style={{ maxWidth:600, margin:'0 auto' }}>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
             <button onClick={() => setPhase('slides')} style={{ background:'#1c1c1c', border:'none', color:'#888', padding:'8px 14px', borderRadius:10, cursor:'pointer', fontWeight:800, fontSize:'.85rem' }}>← Back to Lesson</button>
@@ -125,11 +126,11 @@ function SlideView({ lesson, subject, onDone, onBack, uid, quizHistory, saveQuiz
   ))
 
   return (
-    <div style={{ minHeight:'100vh', background: theme.bg, display:'flex', flexDirection:'column', padding:'16px 14px 90px', position:'relative' }}>
+    <div style={{ minHeight:'100vh', background: theme.bg, display:'flex', flexDirection:'column', padding:'16px 14px 24px', position:'relative' }}>
       {/* Top bar */}
       <div style={{ maxWidth:600, margin:'0 auto', width:'100%' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-          <button onClick={onBack} style={{ background:'rgba(255,255,255,.08)', border:'none', color:'#aaa', padding:'8px 14px', borderRadius:10, cursor:'pointer', fontWeight:800, fontSize:'.82rem' }}>← Back</button>
+          <button onClick={onBack} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Back</button>
           <div style={{ display:'flex', gap:5 }}>
             {slides.map((_,i) => (
               <div key={i} style={{ width: i === slide ? 20 : 7, height:7, borderRadius:999, background: i <= slide ? theme.accent : 'rgba(255,255,255,.15)', transition:'all .3s' }} />
@@ -189,7 +190,8 @@ export default function LearnPage() {
     readingLog, saveReadingLog,
     writingLog, saveWritingLog,
     points, addPoints, awardBadge,
-    settings,
+    lessonResetLog, saveLessonResetLog,
+    settings, getEffectiveRules, effectiveRanks,
   } = useAuth()
 
   const [view, setView]                   = useState('subjects')
@@ -207,8 +209,9 @@ export default function LearnPage() {
   const [clInPerson, setClInPerson]       = useState(false)
   const [toast, setToast]                 = useState(null)
 
-  const color     = settings?.primaryColor || '#f5a623'
-  const uid       = currentUser.id
+  const color          = settings?.primaryColor || '#f5a623'
+  const uid            = currentUser.id
+  const effectiveRules = getEffectiveRules ? getEffectiveRules(uid) : settings
   const showToast = (msg, bg) => { setToast({ msg, bg: bg||color }); setTimeout(()=>setToast(null),3000) }
 
   const isLessonDone    = (lid) => !!learnProgress?.[uid]?.[lid]
@@ -234,6 +237,7 @@ export default function LearnPage() {
     const up = { ...learnProgress, [userId]: { ...(learnProgress[userId]||{}) } }
     delete up[userId][lid]
     saveLearnProgress(up)
+    saveLessonResetLog([...(lessonResetLog||[]), { userId, lessonId:lid, date:new Date().toISOString(), resetBy:currentUser.name }])
     showToast('Lesson reset')
   }
 
@@ -261,15 +265,19 @@ export default function LearnPage() {
   const startReading = () => { const iv = setInterval(()=>setReadingSeconds(s=>s+1),1000); setTimerInterval(iv) }
   const stopReading  = () => { if(timerInterval){ clearInterval(timerInterval); setTimerInterval(null) } }
   const logReading   = () => {
-    if (readingSeconds < 60) { showToast('Read at least 1 minute!','#e53935'); return }
+    const readMin = (effectiveRules?.readingMinutes ?? 30) * 60; if (readingSeconds < readMin) { showToast(`Read at least ${effectiveRules?.readingMinutes ?? 30} minutes!`,'#e53935'); return }
     saveReadingLog({ ...readingLog, [uid]: { ...(readingLog[uid]||{}), [todayKey()]: { date:todayKey(), seconds:readingSeconds, summary:readingSummary.trim(), loggedAt:new Date().toISOString() } } })
-    stopReading(); setReadingSeconds(0); setReadingSummary(''); showToast('Reading logged! ✅')
+    const readPts = effectiveRules?.readingPoints ?? 15
+    addPoints(uid, readPts)
+    stopReading(); setReadingSeconds(0); setReadingSummary(''); showToast(`Reading logged! +${readPts} pts ✅`)
   }
   const logWriting = () => {
     const wc = writingText.trim().split(/\s+/).filter(Boolean).length
-    if (wc < 30) { showToast('Write at least 30 words!','#e53935'); return }
+    const writeMin = effectiveRules?.writingMinWords ?? 30; if (wc < writeMin) { showToast(`Write at least ${writeMin} words!`,'#e53935'); return }
     saveWritingLog({ ...writingLog, [uid]: { ...(writingLog[uid]||{}), [todayKey()]: { date:todayKey(), text:writingText.trim(), subject:writingSubject.trim(), wordCount:wc, loggedAt:new Date().toISOString() } } })
-    setWritingText(''); setWritingSubject(''); showToast('Writing submitted! ✅')
+    const writePts = effectiveRules?.writingPoints ?? 15
+    addPoints(uid, writePts)
+    setWritingText(''); setWritingSubject(''); showToast(`Writing submitted! +${writePts} pts ✅`)
   }
 
   const fmt = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`
@@ -284,7 +292,7 @@ export default function LearnPage() {
       onDone={() => setView('subject')}
       uid={uid} quizHistory={quizHistory} saveQuizHistory={saveQuizHistory}
       learnProgress={learnProgress} completeLesson={completeLesson} addPoints={addPoints}
-      isParent={isParent} showToast={showToast} color={color}
+      isParent={isParent} showToast={showToast} color={color} settings={effectiveRules}
     />
   }
 
@@ -292,7 +300,7 @@ export default function LearnPage() {
   if (view === 'reading') return (
     <PageWrap>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={()=>setView('subjects')} style={{ background:'#1c1c1c', border:'none', color:'#888', padding:'8px 12px', borderRadius:10, cursor:'pointer', fontWeight:800 }}>← Back</button>
+        <button onClick={()=>setView('subjects')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Back</button>
         <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.3rem' }}>📖 Reading Log</div>
       </div>
       {todayReading ? (
@@ -332,7 +340,7 @@ export default function LearnPage() {
   if (view === 'writing') return (
     <PageWrap>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={()=>setView('subjects')} style={{ background:'#1c1c1c', border:'none', color:'#888', padding:'8px 12px', borderRadius:10, cursor:'pointer', fontWeight:800 }}>← Back</button>
+        <button onClick={()=>setView('subjects')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Back</button>
         <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.3rem' }}>✏️ Writing Log</div>
       </div>
       {todayWriting ? (
@@ -369,7 +377,7 @@ export default function LearnPage() {
     return (
       <PageWrap>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-          <button onClick={()=>setView('subjects')} style={{ background:'#1c1c1c', border:'none', color:'#888', padding:'8px 12px', borderRadius:10, cursor:'pointer', fontWeight:800 }}>← Back</button>
+          <button onClick={()=>setView('subjects')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Back</button>
           <div style={{ flex:1 }}>
             <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.2rem' }}>{activeSubject.icon} {activeSubject.name}</div>
             <div style={{ fontSize:'.72rem', color:'#666', fontWeight:600 }}>{activeSubject.ageNote} · {activeSubject.desc}</div>
@@ -429,10 +437,13 @@ export default function LearnPage() {
   const lb = [...users].map(u=>({...u, xp:getXP(u.id)})).sort((a,b)=>b.xp-a.xp)
   const myXP = getXP(uid)
 
+  const navigate = useNavigate()
+
   return (
     <PageWrap>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.5rem', color }}>📚 Learn</div>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <button onClick={()=>navigate('/home')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Home</button>
+        <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.5rem', color, flex:1 }}>📚 Learn</div>
         <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(245,166,35,.12)', borderRadius:999, padding:'4px 12px', fontWeight:800, fontSize:'.82rem', color }}>{myXP} XP</div>
       </div>
 
@@ -473,7 +484,7 @@ export default function LearnPage() {
         <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px', background:'#1c1c1c', borderRadius:12, marginBottom:8, borderLeft:u.id===uid?`3px solid ${u.color}`:'3px solid transparent' }}>
           <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1rem', minWidth:24, color:i===0?'#f5a623':i===1?'#888':i===2?'#ff6b35':'#555' }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
           <div style={{ fontSize:'1.3rem' }}>{u.avatar}</div>
-          <div style={{ flex:1 }}><div style={{ fontWeight:800, color:u.color }}>{u.name}</div><div style={{ fontSize:'.72rem', color:'#555', fontWeight:600 }}>{getXP(u.id)} XP · {getRank(getXP(u.id)).name}</div></div>
+          <div style={{ flex:1 }}><div style={{ fontWeight:800, color:u.color }}>{u.name}</div><div style={{ fontSize:'.72rem', color:'#555', fontWeight:600 }}>{getXP(u.id)} XP · {getRank(getXP(u.id), effectiveRanks).name}</div></div>
           {u.id===uid&&<Badge color={color} bg={color+'22'}>You</Badge>}
         </div>
       ))}
@@ -484,7 +495,7 @@ export default function LearnPage() {
       {modal==='create'&&(
         <Modal onClose={()=>setModal(null)}>
           <ModalTitle>Create a Lesson 📝</ModalTitle>
-          <Input value={clTitle} onChange={e=>setClTitle(e.target.value)} placeholder='Lesson title' style={{ marginBottom:10 }} autoFocus />
+          <Input value={clTitle} onChange={e=>setClTitle(e.target.value)} placeholder='Lesson title' style={{ marginBottom:10 }} />
           <Input value={clSubject} onChange={e=>setClSubject(e.target.value)} placeholder='Subject name (e.g. Life Skills)' style={{ marginBottom:10 }} />
           <Input value={clContent} onChange={e=>setClContent(e.target.value)} placeholder='Lesson content... (use double line breaks to split into slides)' rows={6} style={{ marginBottom:12 }} />
           <label style={{ display:'flex', alignItems:'center', gap:10, fontWeight:700, fontSize:'.85rem', marginBottom:18, cursor:'pointer' }}>

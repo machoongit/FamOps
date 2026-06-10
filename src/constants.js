@@ -18,13 +18,15 @@ export const RANKS = [
   { name: 'General',   minXP: 5000, icon: '👑', color: '#ffc107' },
 ]
 
-export const getRank = (xp) => {
-  const r = [...RANKS].reverse().find(r => xp >= r.minXP)
-  return r || RANKS[0]
+export const getRank = (xp, ranks = RANKS) => {
+  const list = ranks && ranks.length ? ranks : RANKS
+  const r = [...list].reverse().find(r => xp >= r.minXP)
+  return r || list[0]
 }
 
-export const getNextRank = (xp) => {
-  return RANKS.find(r => xp < r.minXP) || null
+export const getNextRank = (xp, ranks = RANKS) => {
+  const list = ranks && ranks.length ? ranks : RANKS
+  return list.find(r => xp < r.minXP) || null
 }
 
 // Default avatars — way more options
@@ -155,9 +157,39 @@ export const todayKey  = () => new Date().toISOString().slice(0, 10)
 export const weekKey   = () => { const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return mon.toISOString().slice(0, 10) }
 export const monthKey  = () => new Date().toISOString().slice(0, 7)
 export const daysAgo   = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10) }
-export const isWorkday = () => { const d = new Date().getDay(); return d >= 1 && d <= 4 }
-export const isWeekend = () => !isWorkday()
+export const isWorkday = (settings) => { const days = settings?.signupDays ?? [1,2,3,4]; return days.includes(new Date().getDay()) }
+export const isWeekend = (settings) => !isWorkday(settings)
 export const getDayName = () => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
 export const getSpecialDay = (specialDays) => (specialDays || []).find(s => s.day === getDayName())
-export const isSignupOpen = () => { const h = new Date().getHours(); return h >= 8 && h < 10 }
+export const isSignupOpen = (settings) => { const h = new Date().getHours(); const start = settings?.signupStart ?? 8; const end = settings?.signupEnd ?? 10; const days = settings?.signupDays ?? [1,2,3,4]; return days.includes(new Date().getDay()) && h >= start && h < end }
 export const formatDate = (iso) => { if (!iso) return ''; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' }) }
+
+// ── Harry Potter Theme ──────────────────────────────────────────────────────
+export const HP_HOUSES = [
+  { id: 'gryffindor', name: 'Gryffindor', emoji: '🦁', color: '#ae0001', accent: '#d3a625', desc: 'Brave, daring, nerve, and chivalry' },
+  { id: 'slytherin',  name: 'Slytherin',  emoji: '🐍', color: '#1a472a', accent: '#aaaaaa', desc: 'Ambitious, cunning, leadership, resourcefulness' },
+  { id: 'ravenclaw',  name: 'Ravenclaw',  emoji: '🦅', color: '#0e1a40', accent: '#946b2d', desc: 'Intelligence, wisdom, wit, and learning' },
+  { id: 'hufflepuff', name: 'Hufflepuff', emoji: '🦡', color: '#ecb939', accent: '#372e29', desc: 'Hard work, patience, loyalty, and fair play' },
+]
+
+export const HP_RANKS = [
+  { name: 'First Year',   minXP: 0,    icon: '📜',  color: '#888' },
+  { name: 'Second Year',  minXP: 100,  icon: '✨',  color: '#43a047' },
+  { name: 'Third Year',   minXP: 250,  icon: '🔮',  color: '#43a047' },
+  { name: 'Fourth Year',  minXP: 500,  icon: '🧙',  color: '#4a90e2' },
+  { name: 'Fifth Year',   minXP: 800,  icon: '⚡',  color: '#4a90e2' },
+  { name: 'Prefect',      minXP: 1200, icon: '🏅',  color: '#9c27b0' },
+  { name: 'Head Student', minXP: 1800, icon: '🎓',  color: '#9c27b0' },
+  { name: 'Professor',    minXP: 2500, icon: '🦉',  color: '#f5a623' },
+  { name: 'Headmaster',   minXP: 3500, icon: '🏰',  color: '#f5a623' },
+  { name: 'Dumbledore',   minXP: 5000, icon: '👑',  color: '#ffc107' },
+]
+
+// ── Meal Planning ──────────────────────────────────────────────────────────
+export const MEAL_SLOTS = [
+  { key: 'breakfast',    label: 'Breakfast',     icon: '🌅', time: 'Morning' },
+  { key: 'lunch',        label: 'Lunch',         icon: '☀️',  time: 'Midday' },
+  { key: 'dinner',       label: 'Dinner',        icon: '🍽️', time: 'Evening' },
+  { key: 'snacks',       label: 'Snacks',        icon: '🍿', time: 'Anytime' },
+  { key: 'midnightChow', label: 'Midnight Chow', icon: '🌛', time: 'Late Night' },
+]

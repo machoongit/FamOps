@@ -1,10 +1,12 @@
+import { useNavigate } from 'react-router-dom'
 // pages/ChoresPage.jsx
 import { useState } from 'react'
 import { useAuth } from '../AuthContext'
 import { PageWrap, Card, Btn, Input, Select, SectionTitle, Badge, ProgressBar, Toast, Modal, ModalTitle, ChoreRow, StrikeDots, Empty } from '../components'
-import { todayKey, daysAgo, weekKey, isWorkday, getDayName, isSignupOpen, CHORE_CATEGORIES } from '../constants'
+import { todayKey, daysAgo, weekKey, isWorkday, getDayName, isSignupOpen } from '../constants'
 
 export default function ChoresPage() {
+  const navigate = useNavigate()
   const {
     currentUser, users, kids, isParent, isKid,
     chores, saveChores,
@@ -14,7 +16,10 @@ export default function ChoresPage() {
     weekendStatus, saveWeekendStatus,
     schedule, specialDays,
     addPoints, awardBadge,
+    logActivity,
     settings,
+    getEffectiveRules,
+    choreCategories,
   } = useAuth()
 
   const [tab, setTab]       = useState(isKid ? 'signup' : 'overview')
@@ -29,8 +34,9 @@ export default function ChoresPage() {
   const [chPts, setChPts]       = useState(10)
   const [editId, setEditId]     = useState(null)
 
-  const color   = settings?.primaryColor || '#f5a623'
-  const workday = isWorkday()
+  const color        = settings?.primaryColor || '#f5a623'
+  const effectiveRules = getEffectiveRules ? getEffectiveRules(currentUser.id) : settings
+  const workday      = isWorkday(effectiveRules)
   const dayName = getDayName()
   const today   = todayKey()
   const wk      = weekKey()
@@ -56,8 +62,8 @@ export default function ChoresPage() {
   }
 
   const signUp = (choreId) => {
-    if (!isWorkday()) { showToast("It's the weekend — rest up! 🎉", '#43a047'); return }
-    if (!isSignupOpen()) { showToast('Signup opens 8am and closes 10am', '#e53935'); return }
+    if (!isWorkday(effectiveRules)) { showToast("It's the weekend — rest up! 🎉", '#43a047'); return }
+    if (!isSignupOpen(effectiveRules)) { showToast(`Signup opens ${effectiveRules?.signupStart ?? 8}am and closes ${effectiveRules?.signupEnd ?? 10}am`, '#e53935'); return }
     if (isStreakLocked(currentUser.id, choreId)) { showToast('You did this 2 days in a row — give someone else a turn!', '#e53935'); return }
     const taken = todaySU[choreId]
     if (taken && taken !== currentUser.id) { showToast('Already taken!', '#e53935'); return }
@@ -83,7 +89,7 @@ export default function ChoresPage() {
     const hist = approve ? [...new Set([...(ex.history || []), today])] : (ex.history || [])
     const chore = chores.find(c => c.id === choreId)
     saveCompletions({ ...completions, [uid]: { ...(completions[uid] || {}), [choreId]: approve ? { date: today, status: 'approved', history: hist } : { history: hist } } })
-    if (approve && chore?.points) addPoints(uid, chore.points)
+    if (approve && chore?.points) { addPoints(uid, chore.points); logActivity(uid, 'chore', `Completed: ${chore.label}`, chore.points) }
     showToast(approve ? '✅ Approved! Points added.' : '❌ Sent back')
   }
 
@@ -122,7 +128,7 @@ export default function ChoresPage() {
 
   const editChore = (c) => { setChLabel(c.label); setChCat(c.category); setChMand(c.mandatory); setChPts(c.points); setEditId(c.id); setModal('choreForm') }
 
-  const categories = ['All', ...CHORE_CATEGORIES]
+  const categories = ["All", ...(choreCategories || [])]
   const filteredChores = filter === 'All' ? chores : chores.filter(c => c.category === filter)
 
   const pending = pendingList()
@@ -131,7 +137,7 @@ export default function ChoresPage() {
   return (
     <PageWrap>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ fontFamily: "'Fredoka One',cursive", fontSize: '1.5rem', color }}>✅ Chores</div>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}><button onClick={()=>navigate('/home')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Home</button><div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.5rem', color, flex:1 }}>✅ Chores</div></div>
         <div style={{ fontSize: '.75rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: workday ? 'rgba(74,144,226,.15)' : 'rgba(67,160,71,.15)', color: workday ? '#4a90e2' : '#43a047' }}>
           {dayName} · {workday ? 'Work Day' : 'Weekend'}
         </div>
@@ -147,7 +153,7 @@ export default function ChoresPage() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, background: '#141414', borderRadius: 12, padding: 3, marginBottom: 18 }}>
         {(isKid
-          ? [{ k:'signup', l:'Sign Up' + (isSignupOpen() ? ' 🟢' : '') }, { k:'mychores', l:'My Chores' }, { k:'schedule', l:'Routine' }]
+          ? [{ k:'signup', l:'Sign Up' + (isSignupOpen(effectiveRules) ? ' 🟢' : '') }, { k:'mychores', l:'My Chores' }, { k:'schedule', l:'Routine' }]
           : [{ k:'overview', l:'Overview' }, { k:'approvals', l:'Approvals' + (pending.length > 0 ? ` (${pending.length})` : '') }, { k:'manage', l:'Manage' }, { k:'schedule', l:'Routine' }]
         ).map(t => (
           <button key={t.k} onClick={() => setTab(t.k)} style={{ flex: 1, padding: '9px 4px', border: 'none', borderRadius: 9, background: tab === t.k ? '#1c1c1c' : 'transparent', color: tab === t.k ? '#fff' : '#555', fontFamily: 'Nunito,sans-serif', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer', transition: 'all .2s', textAlign: 'center' }}>
@@ -164,7 +170,7 @@ export default function ChoresPage() {
               <div style={{ background: 'rgba(245,166,35,.08)', border: '1.5px solid rgba(245,166,35,.2)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', fontSize: '.85rem', fontWeight: 700 }}>
                 <span style={{ fontSize: '1.2rem' }}>🕐</span>
                 <div>
-                  {isSignupOpen() ? <span style={{ color }}>Signup is OPEN until 10:00 AM!</span> : 'Signup opens 8am and closes 10am.'}
+                  {isSignupOpen(effectiveRules) ? <span style={{ color }}>Signup is OPEN until ${effectiveRules?.signupEnd ?? 10}:00!</span> : `Signup opens ${effectiveRules?.signupStart ?? 8}am, closes ${effectiveRules?.signupEnd ?? 10}am.`}
                   <div style={{ fontSize: '.72rem', color: '#666', marginTop: 2 }}>First come first picks. No phones during chore time.</div>
                 </div>
               </div>
@@ -336,9 +342,9 @@ export default function ChoresPage() {
       {modal === 'choreForm' && (
         <Modal onClose={() => setModal(null)}>
           <ModalTitle>{editId ? 'Edit Chore' : 'Add Chore'}</ModalTitle>
-          <Input value={chLabel} onChange={e => setChLabel(e.target.value)} placeholder='Chore name' style={{ marginBottom: 10 }} autoFocus />
+          <Input value={chLabel} onChange={e => setChLabel(e.target.value)} placeholder='Chore name' style={{ marginBottom: 10 }} />
           <Select value={chCat} onChange={e => setChCat(e.target.value)} style={{ marginBottom: 10 }}>
-            {CHORE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {( choreCategories || []).map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <label style={{ fontWeight: 700, fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

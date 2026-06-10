@@ -1,15 +1,133 @@
-// pages/HomePage.jsx — Family Dashboard
+// pages/HomePage.jsx — True hub, nothing below the fold
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
-import { PageWrap, Card, Btn, Badge, ProgressBar, Toast, Modal, ModalTitle, Input, Select, Empty, RankBadge, PointsPill, StrikeDots } from '../components'
-import { getRank, getNextRank, REQUEST_TYPES, todayKey, weekKey, monthKey, daysAgo, isWorkday, getDayName, formatDate, BADGES } from '../constants'
+import { ProgressBar, Toast, Modal, ModalTitle, StrikeDots, Badge, Btn, Input } from '../components'
+import { getRank, getNextRank, REQUEST_TYPES, todayKey, weekKey, isWorkday, getDayName, formatDate, BADGES } from '../constants'
 
-const StatBox = ({ icon, label, val, color }) => (
-  <div style={{ background:'#141414', borderRadius:12, padding:'12px 10px', textAlign:'center' }}>
-    <div style={{ fontSize:'1.3rem', marginBottom:4 }}>{icon}</div>
-    <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.3rem', color }}>{val}</div>
-    <div style={{ fontSize:'.64rem', color:'#555', fontWeight:700 }}>{label}</div>
+const DAYS_SHORT = ['S','M','T','W','T','F','S']
+const DAYS_FULL  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+
+function HomeCalendar({ calendars, specialDays, currentUser, isParent, color, today, navigate, allEvents }) {
+  const [selDay, setSelDay] = useState(today)
+  const [month, setMonth]   = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
+
+  const firstDay = new Date(month.y, month.m, 1).getDay()
+  const daysInMo = new Date(month.y, month.m + 1, 0).getDate()
+  const pad = n => String(n).padStart(2,'0')
+  const ds  = d => `${month.y}-${pad(month.m+1)}-${pad(d)}`
+
+  const eventsOn = dateStr => (allEvents||[]).filter(ev =>
+    ev.date === dateStr && (isParent || ev.visibility === 'all' || ev.ownerId === currentUser.id)
+  )
+  const specialOn = dateStr => {
+    const d = new Date(dateStr+'T00:00:00')
+    return (specialDays||[]).find(s => s.day === DAYS_FULL[d.getDay()])
+  }
+
+  const selEvents  = eventsOn(selDay)
+  const selSpecial = specialOn(selDay)
+  const selDate    = new Date(selDay+'T00:00:00')
+  const monthName  = new Date(month.y, month.m, 1).toLocaleDateString('en-US',{month:'short',year:'numeric'})
+
+  return (
+    <div style={{ padding:'0 16px 8px', flexShrink:0 }}>
+      <div style={{ background:'rgba(255,255,255,.05)', borderRadius:18, padding:'10px 12px', border:'1.5px solid rgba(255,255,255,.08)' }}>
+
+        {/* Month nav */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+          <button onClick={()=>setMonth(p=>{ const d=new Date(p.y,p.m-1,1); return{y:d.getFullYear(),m:d.getMonth()} })}
+            style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', width:26, height:26, borderRadius:8, cursor:'pointer', fontWeight:800 }}>‹</button>
+          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.85rem', color }}>{monthName}</div>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={()=>setMonth(p=>{ const d=new Date(p.y,p.m+1,1); return{y:d.getFullYear(),m:d.getMonth()} })}
+              style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', width:26, height:26, borderRadius:8, cursor:'pointer', fontWeight:800 }}>›</button>
+            <button onClick={()=>navigate('/calendar')} style={{ background:color+'22', border:`1px solid ${color}44`, color, fontWeight:800, fontSize:'.65rem', padding:'4px 10px', borderRadius:8, cursor:'pointer' }}>+ Add</button>
+          </div>
+        </div>
+
+        {/* Day headers */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:3 }}>
+          {DAYS_SHORT.map((d,i)=><div key={i} style={{ textAlign:'center', fontSize:'.58rem', color:'#444', fontWeight:800, padding:'2px 0' }}>{d}</div>)}
+        </div>
+
+        {/* Grid */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+          {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i} />)}
+          {Array(daysInMo).fill(null).map((_,i)=>{
+            const d=i+1, dateStr=ds(d)
+            const evs=eventsOn(dateStr), spec=specialOn(dateStr)
+            const isSel=dateStr===selDay, isTod=dateStr===today
+            return (
+              <div key={d} onClick={()=>setSelDay(dateStr)}
+                style={{ borderRadius:7, padding:'3px 1px', textAlign:'center', cursor:'pointer', background:isSel?color:isTod?color+'25':'transparent', border:`1px solid ${isTod&&!isSel?color:'transparent'}`, transition:'all .1s' }}>
+                <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.8rem', color:isSel?'#000':isTod?color:'rgba(255,255,255,.75)', lineHeight:1.2 }}>{d}</div>
+                <div style={{ display:'flex', justifyContent:'center', gap:1, marginTop:1, minHeight:4 }}>
+                  {spec&&<div style={{ width:3, height:3, borderRadius:'50%', background:'#4a90e2' }} />}
+                  {evs.slice(0,2).map((ev,ei)=><div key={ei} style={{ width:3, height:3, borderRadius:'50%', background:ev.color }} />)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Selected day events */}
+        {(selEvents.length > 0 || selSpecial) && (
+          <div style={{ marginTop:8, borderTop:'1px solid rgba(255,255,255,.06)', paddingTop:7 }}>
+            <div style={{ fontSize:'.65rem', color:'#555', fontWeight:800, marginBottom:5 }}>
+              {selDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+              {selDay===today&&<span style={{ color:'#22c55e', marginLeft:6 }}>TODAY</span>}
+            </div>
+            {selSpecial&&<div style={{ display:'flex', gap:6, alignItems:'center', fontSize:'.75rem', fontWeight:700, color:'#4a90e2', marginBottom:4 }}><span>{selSpecial.icon}</span>{selSpecial.event}</div>}
+            {selEvents.map(ev=>(
+              <div key={ev.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 8px', background:ev.color+'15', borderRadius:8, marginBottom:4, borderLeft:`2px solid ${ev.color}` }}>
+                <div style={{ fontWeight:700, fontSize:'.75rem', flex:1 }}>{ev.title}</div>
+                {ev.time&&<div style={{ fontSize:'.65rem', color:'rgba(255,255,255,.4)' }}>{ev.time}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+        {selEvents.length===0&&!selSpecial&&(
+          <div style={{ marginTop:6, borderTop:'1px solid rgba(255,255,255,.06)', paddingTop:6, fontSize:'.68rem', color:'#444', fontWeight:600 }}>
+            {selDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} — nothing scheduled
+            {selDay===today&&<span style={{ color:'#22c55e', marginLeft:4 }}>• TODAY</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Stat chip ─────────────────────────────────────────────────────────────
+const Chip = ({ icon, label, color, bg }) => (
+  <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:bg||'rgba(255,255,255,.07)', borderRadius:999, padding:'5px 12px', fontWeight:800, fontSize:'.75rem', color:color||'#fff' }}>
+    <span>{icon}</span>{label}
+  </div>
+)
+
+// ── Big nav tile ──────────────────────────────────────────────────────────
+const Tile = ({ icon, label, sub, gradient, onClick, badge, color }) => (
+  <div onClick={onClick} style={{
+    background: gradient, borderRadius:22, padding:'18px 14px',
+    cursor:'pointer', position:'relative', overflow:'hidden',
+    border:'1.5px solid rgba(255,255,255,.09)',
+    boxShadow:'0 6px 24px rgba(0,0,0,.35)',
+    display:'flex', flexDirection:'column', justifyContent:'space-between',
+    minHeight:110, transition:'transform .12s',
+    WebkitTapHighlightColor:'transparent',
+  }}
+  onTouchStart={e=>e.currentTarget.style.transform='scale(.96)'}
+  onTouchEnd={e=>e.currentTarget.style.transform='scale(1)'}
+  onMouseDown={e=>e.currentTarget.style.transform='scale(.96)'}
+  onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}
+  >
+    {badge && <div style={{ position:'absolute', top:10, right:10, background:'#e53935', color:'#fff', fontWeight:800, fontSize:'.62rem', padding:'2px 7px', borderRadius:999 }}>{badge}</div>}
+    <div style={{ fontSize:'2rem' }}>{icon}</div>
+    <div>
+      <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.05rem', color:'#fff', lineHeight:1.2 }}>{label}</div>
+      {sub && <div style={{ fontSize:'.68rem', color:'rgba(255,255,255,.55)', fontWeight:700, marginTop:2 }}>{sub}</div>}
+    </div>
+    <div style={{ position:'absolute', bottom:-16, right:-16, width:60, height:60, borderRadius:'50%', background:'rgba(255,255,255,.06)' }} />
   </div>
 )
 
@@ -18,561 +136,394 @@ export default function HomePage() {
     currentUser, users, kids, isParent, isKid,
     points, badges, strikes, weekendStatus,
     punishments, requests, saveRequests,
-    announcements, weekendActs, specialDays,
-    schedule, saveSchedule,
+    announcements, specialDays,
     chores, signups, completions,
     learnProgress, readingLog, writingLog,
-    calendars, settings,
-    profileVisibility,
-    addPoints, awardBadge,
+    calendars, schedule,
+    settings, profileVisibility,
+    customRequestTypes,
+    parentNotes, saveParentNotes,
+    effectiveRanks, mealRequests,
+    logout,
   } = useAuth()
 
-  const [modal, setModal]     = useState(null) // 'request' | 'profile:{uid}' | 'weekly' | 'monthly'
+  const [modal, setModal]         = useState(null)
   const [profileUid, setProfileUid] = useState(null)
-  const [reqType, setReqType] = useState(REQUEST_TYPES[0].id)
-  const [reqNote, setReqNote] = useState('')
-  const [reqDate, setReqDate] = useState('')
-  const [toast, setToast]     = useState(null)
-  const [rTime, setRTime]     = useState('')
-  const [rLabel, setRLabel]   = useState('')
-  const [rNote, setRNote]     = useState('')
-  const [rIcon, setRIcon]     = useState('📋')
-  const [rEditId, setREditId] = useState(null)
+  const [reqType, setReqType]     = useState(null)
+  const [reqNote, setReqNote]     = useState('')
+  const [reqDate, setReqDate]     = useState('')
+  const [toast, setToast]         = useState(null)
   const navigate = useNavigate()
 
-  const color    = settings?.primaryColor || '#f5a623'
-  const appName  = settings?.appName || 'FamOps'
-  const today    = todayKey()
-  const wk       = weekKey()
-  const workday  = isWorkday()
-  const dayName  = getDayName()
+  const color   = settings?.primaryColor || '#f5a623'
+  const appName = settings?.appName || 'FamOps'
+  const today   = todayKey()
+  const wk      = weekKey()
+  const workday = isWorkday(settings)
+  const dayName = getDayName()
 
   const myPoints  = points?.[currentUser.id] || 0
-  const myRank    = getRank(myPoints)
-  const nextRank  = getNextRank(myPoints)
+  const myRank    = getRank(myPoints, effectiveRanks)
   const myStrikes = strikes?.[currentUser.id]?.[wk] || 0
   const lostWknd  = weekendStatus?.[currentUser.id]?.[wk] === 'lost'
-  const myPunishments = punishments.filter(p => p.kidId === currentUser.id && !p.resolved)
-  const myRequests    = requests.filter(r => r.kidId === currentUser.id).slice(-3).reverse()
-  const special       = specialDays?.find(s => s.day === dayName)
+  const myPunishments = punishments.filter(p=>{
+    if (p.kidId!==currentUser.id||p.resolved) return false
+    if (p.expiryDate && p.expiryDate < today) return false // expired
+    return true
+  })
+  const todaySU   = signups?.[today] || {}
+  const myChores  = chores.filter(c=>todaySU[c.id]===currentUser.id)
+  const myDone    = myChores.filter(c=>completions?.[currentUser.id]?.[c.id]?.date===today&&completions[currentUser.id][c.id].status==='approved').length
+  const myLessons = Object.keys(learnProgress?.[currentUser.id]||{}).filter(k=>k!=='_customSubjects').length
+  const pendingReqs = requests.filter(r=>r.kidId===currentUser.id&&r.status==='pending').length
+  const allRequestTypes = [...REQUEST_TYPES, ...(customRequestTypes||[])]
 
-  const showToast = (msg, bg) => { setToast({ msg, bg: bg||color }); setTimeout(()=>setToast(null),2800) }
+  // Parent stats
+  const pendingApprovals = isParent ? (() => { let c=0; kids.forEach(k=>Object.values(completions?.[k.id]||{}).forEach(v=>{ if(v.date===today&&v.status==='pending') c++ })); return c })() : 0
+  const pendingRequests  = isParent ? requests.filter(r=>r.status==='pending').length : 0
 
-  // Today's chore progress for a user
-  const todaySU = signups?.[today] || {}
-  const userChores = (uid) => chores.filter(c => todaySU[c.id] === uid)
-  const userDone   = (uid) => userChores(uid).filter(c => completions?.[uid]?.[c.id]?.date === today && completions[uid][c.id].status === 'approved').length
-  const userPct    = (uid) => { const t = userChores(uid).length; return t > 0 ? Math.round((userDone(uid)/t)*100) : 0 }
-
-  // Upcoming calendar events (next 3)
+  // Next calendar event
   const allEvents = Object.values(calendars||{}).flat()
-  const upcoming = allEvents
-    .filter(ev => {
-      if (ev.date < today) return false
-      if (isParent) return true
-      return ev.visibility === 'all' || ev.ownerId === currentUser.id
-    })
-    .sort((a,b) => a.date.localeCompare(b.date))
-    .slice(0, 4)
+  const upcomingEvs = allEvents.filter(ev=>ev.date>=today&&(isParent||ev.visibility==='all'||ev.ownerId===currentUser.id)).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4)
+  const nextEvent = upcomingEvs[0]
 
-  // Weekly stats for a user
-  const weeklyStats = (uid) => {
-    const choresDone = Object.values(completions?.[uid]||{}).filter(c=>c.date>=wk&&c.status==='approved').length
-    const lessonsD   = Object.keys(learnProgress?.[uid]||{}).filter(k=>k!=='_customSubjects'&&learnProgress[uid][k]?.completedAt>=wk).length
-    const readDays   = Object.keys(readingLog?.[uid]||{}).filter(d=>d>=wk).length
-    const writeDays  = Object.keys(writingLog?.[uid]||{}).filter(d=>d>=wk).length
-    const strikesW   = strikes?.[uid]?.[wk] || 0
-    return { choresDone, lessonsD, readDays, writeDays, strikesW }
-  }
+  // Today's special
+  const special = specialDays?.find(s=>s.day===dayName)
 
-  // Monthly stats
-  const monthlyStats = (uid) => {
-    const mo = monthKey()
-    const choresM  = Object.values(completions?.[uid]||{}).filter(c=>c.date&&c.date.startsWith(mo)&&c.status==='approved').length
-    const lessonsM = Object.keys(learnProgress?.[uid]||{}).filter(k=>k!=='_customSubjects'&&learnProgress[uid][k]?.completedAt?.startsWith(mo)).length
-    const readM    = Object.keys(readingLog?.[uid]||{}).filter(d=>d.startsWith(mo)).length
-    const writeM   = Object.keys(writingLog?.[uid]||{}).filter(d=>d.startsWith(mo)).length
-    const ptsEarned= points?.[uid]||0
-    return { choresM, lessonsM, readM, writeM, ptsEarned }
+  const showToast = (msg, bg) => { setToast({ msg, bg:bg||color }); setTimeout(()=>setToast(null),2800) }
+
+  const exportFamilyData = async () => {
+    const dump = Object.keys(localStorage)
+      .filter(k => k.startsWith('fo_'))
+      .reduce((acc, key) => ({ ...acc, [key]: JSON.parse(localStorage.getItem(key) || 'null') }), {})
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(JSON.stringify(dump, null, 2))
+        showToast('Family data copied to clipboard', '#22c55e')
+        return
+      }
+    } catch (e) {
+      console.warn('Clipboard export failed, falling back to download.', e)
+    }
+
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `famops-backup-${today}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('Family data downloaded', '#22c55e')
   }
 
   const submitRequest = () => {
     if (!reqNote.trim()) { showToast('Add a note!','#e53935'); return }
-    const type = REQUEST_TYPES.find(r=>r.id===reqType)
-    saveRequests([...requests, { id:'req'+Date.now(), kidId:currentUser.id, kidName:currentUser.name, kidAvatar:currentUser.avatar, kidColor:currentUser.color, type:reqType, typeLabel:type?.label, typeIcon:type?.icon, note:reqNote.trim(), date:reqDate||null, status:'pending', parentNote:'', submittedAt:new Date().toISOString() }])
-    setReqNote(''); setReqDate(''); setModal(null)
-    showToast('Request sent! ✨')
+    const rt = allRequestTypes.find(r=>r.id===reqType) || allRequestTypes[0]
+    saveRequests([...requests, { id:'req'+Date.now(), kidId:currentUser.id, kidName:currentUser.name, kidAvatar:currentUser.avatar, kidColor:currentUser.color, type:rt.id, typeLabel:rt.label, typeIcon:rt.icon, note:reqNote.trim(), date:reqDate||null, status:'pending', parentNote:'', submittedAt:new Date().toISOString() }])
+    setReqNote(''); setReqDate(''); setModal(null); showToast('Request sent! ✨')
   }
-
-  const openRoutineEdit = (item) => {
-    if (item) { setRTime(item.time||''); setRLabel(item.label||''); setRNote(item.note||''); setRIcon(item.icon||'📋'); setREditId(item.id) }
-    else { setRTime(''); setRLabel(''); setRNote(''); setRIcon('📋'); setREditId(null) }
-    setModal('routine')
-  }
-  const saveRoutine = () => {
-    if (!rLabel.trim()) { showToast('Add a label!','#e53935'); return }
-    if (rEditId) {
-      saveSchedule(schedule.map(s => s.id===rEditId ? { ...s, time:rTime.trim(), label:rLabel.trim(), note:rNote.trim(), icon:rIcon } : s))
-      showToast('Routine updated!')
-    } else {
-      saveSchedule([...schedule, { id:'sc'+Date.now(), time:rTime.trim(), label:rLabel.trim(), note:rNote.trim(), icon:rIcon, visible:'all' }])
-      showToast('Added to routine!')
-    }
-    setModal(null)
-  }
-  const deleteRoutine = (id) => { saveSchedule(schedule.filter(s=>s.id!==id)); showToast('Removed') }
-
-  const pendingApprovals = isParent ? (() => { let c=0; kids.forEach(kid=>Object.values(completions?.[kid.id]||{}).forEach(comp=>{ if(comp.date===today&&comp.status==='pending') c++ })); return c })() : 0
-  const pendingRequests  = isParent ? requests.filter(r=>r.status==='pending').length : 0
 
   const profileUser = profileUid ? users.find(u=>u.id===profileUid) : null
 
+  // ── Layout ────────────────────────────────────────────────────────────────
   return (
-    <PageWrap>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
-        <div>
-          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.6rem', color }}>{appName}</div>
-          <div style={{ fontSize:'.72rem', color:'#555', fontWeight:700 }}>{dayName} · {workday?'Work Day':'Weekend'}</div>
+    <div style={{ height:'100dvh', display:'flex', flexDirection:'column', background:'linear-gradient(180deg,#0c0e24 0%,#08091a 100%)', overflow:'hidden' }}>
+
+      {/* ── HEADER ────────────────────────────────────────────────────── */}
+      <div style={{ padding:'14px 16px 10px', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          {/* App name */}
+          <div>
+            <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.6rem', background:`linear-gradient(135deg,${color},#fff)`, WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', lineHeight:1 }}>{appName}</div>
+            <div style={{ fontSize:'.65rem', color:'#555', fontWeight:700 }}>{dayName} · {workday?'Work Day':'Weekend'}</div>
+            <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.45)', fontWeight:700, marginTop:2 }}>Local family dashboard · backup your data anytime</div>
+          </div>
+
+          {/* Avatar + sign out */}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <button onClick={exportFamilyData} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.72rem', padding:'6px 12px', borderRadius:999, cursor:'pointer' }}>
+              Backup
+            </button>
+            <button onClick={()=>{ logout(); navigate('/') }} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#888', fontWeight:800, fontSize:'.72rem', padding:'6px 12px', borderRadius:999, cursor:'pointer' }}>
+              Sign Out
+            </button>
+            <div onClick={()=>{ setProfileUid(currentUser.id); setModal('profile') }} style={{ width:44, height:44, borderRadius:14, background:currentUser.color+'22', border:`2px solid ${currentUser.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', cursor:'pointer', flexShrink:0 }}>
+              {currentUser.avatar}
+            </div>
+          </div>
         </div>
-        <div style={{ textAlign:'right' }}>
-          <div style={{ fontFamily:"'Fredoka One',cursive", color:currentUser.color }}>{currentUser.avatar} {currentUser.name}</div>
-          <div style={{ fontSize:'.7rem', color:myRank.color, fontWeight:800 }}>{myRank.icon} {myRank.name}</div>
+
+        {/* Status strip */}
+        <div style={{ display:'flex', gap:6, marginTop:10, flexWrap:'wrap' }}>
+          <Chip icon={myRank.icon} label={myRank.name} color={myRank.color} />
+          <Chip icon='⭐' label={`${myPoints} pts`} color={color} bg={color+'18'} />
+          {isKid && !lostWknd && <Chip icon='✅' label={`${(settings?.strikeLimit??3)-myStrikes} strikes left`} color='#22c55e' bg='rgba(34,197,94,.1)' />}
+          {isKid && lostWknd && <Chip icon='❌' label='Weekend Lost' color='#e53935' bg='rgba(229,57,53,.1)' />}
+          {nextEvent && <Chip icon='📅' label={nextEvent.title} color='#4a90e2' bg='rgba(74,144,226,.1)' />}
+          {special && <Chip icon={special.icon} label={special.event} color='#4a90e2' bg='rgba(74,144,226,.1)' />}
+          {isParent && pendingApprovals > 0 && <Chip icon='⏳' label={`${pendingApprovals} approvals`} color={color} bg={color+'18'} />}
+          {isParent && pendingRequests > 0 && <Chip icon='✨' label={`${pendingRequests} requests`} color='#9c27b0' bg='rgba(156,39,176,.1)' />}
         </div>
+
+        {/* Announcements (compact) */}
+        {announcements.filter(a=>a.visible!=='parent').slice(0,1).map(a=>(
+          <div key={a.id} style={{ marginTop:8, background:a.urgent?'rgba(229,57,53,.1)':'rgba(245,166,35,.08)', border:`1px solid ${a.urgent?'rgba(229,57,53,.25)':'rgba(245,166,35,.2)'}`, borderRadius:10, padding:'7px 12px', fontSize:'.78rem', fontWeight:700, color:a.urgent?'#e53935':color, display:'flex', gap:8, alignItems:'center' }}>
+            <span>{a.urgent?'🚨':'📢'}</span>{a.title}{a.body&&<span style={{ color:'#666', fontWeight:600 }}>— {a.body}</span>}
+          </div>
+        ))}
+
+        {/* Parent notes */}
+        {isKid && (parentNotes?.[currentUser.id]||[]).filter(n=>!n.read).map(n=>(
+          <div key={n.id} style={{ marginTop:8, background:'rgba(74,144,226,.1)', border:'1.5px solid rgba(74,144,226,.25)', borderRadius:10, padding:'7px 12px', fontSize:'.78rem', fontWeight:700, color:'#4a90e2', display:'flex', gap:8, alignItems:'center' }}>
+            <span>💬</span>
+            <span style={{ flex:1 }}>{n.msg}</span>
+            <button onClick={()=>saveParentNotes({...parentNotes,[currentUser.id]:(parentNotes[currentUser.id]||[]).map(x=>x.id===n.id?{...x,read:true}:x)})} style={{ background:'transparent', border:'none', color:'#555', cursor:'pointer', fontSize:'.85rem' }}>✕</button>
+          </div>
+        ))}
+
+        {/* Active punishment */}
+        {isKid && myPunishments.length > 0 && (
+          <div style={{ marginTop:8, background:'rgba(229,57,53,.08)', border:'1px solid rgba(229,57,53,.2)', borderRadius:10, padding:'7px 12px', fontSize:'.78rem', fontWeight:700, color:'#e53935', display:'flex', gap:8 }}>
+            <span>⚠️</span>{myPunishments[0].desc}{myPunishments[0].buyoutTask&&<span style={{ color:color }}> · Buyout: {myPunishments[0].buyoutTask}</span>}
+          </div>
+        )}
       </div>
 
-      {/* Special day */}
-      {special && (
-        <div style={{ background:'rgba(74,144,226,.1)', border:'1.5px solid rgba(74,144,226,.2)', borderRadius:14, padding:'10px 14px', marginBottom:12, display:'flex', gap:10, alignItems:'center' }}>
-          <div style={{ fontSize:'1.5rem' }}>{special.icon}</div>
-          <div style={{ fontWeight:800, color:'#4a90e2', fontSize:'.88rem' }}>Today — {special.event}</div>
-        </div>
-      )}
-
-      {/* Announcements */}
-      {announcements.filter(a=>a.visible!=='parent').map(a=>(
-        <div key={a.id} style={{ background:a.urgent?'rgba(229,57,53,.1)':'rgba(245,166,35,.08)', border:`1.5px solid ${a.urgent?'rgba(229,57,53,.3)':'rgba(245,166,35,.2)'}`, borderRadius:14, padding:'10px 14px', marginBottom:10, display:'flex', gap:10 }}>
-          <div style={{ fontSize:'1.3rem' }}>{a.urgent?'🚨':'📢'}</div>
-          <div>
-            <div style={{ fontWeight:800, color:a.urgent?'#e53935':color, fontSize:'.88rem' }}>{a.title}</div>
-            {a.body&&<div style={{ fontSize:'.8rem', color:'#888', marginTop:2, fontWeight:600 }}>{a.body}</div>}
-          </div>
-        </div>
-      ))}
-
-      {/* ── FAMILY ROSTER (tappable avatars) ─────────────────────────────── */}
-      <div style={{ marginBottom:18 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.85rem', color:'#555', letterSpacing:.5, textTransform:'uppercase' }}>The Family</div>
-          <div style={{ display:'flex', gap:8 }}>
-            <Btn sm variant='ghost' onClick={()=>setModal('weekly')}>📊 This Week</Btn>
-            <Btn sm variant='ghost' onClick={()=>setModal('monthly')}>📈 Month</Btn>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4 }}>
-          {users.map(u => {
-            const uPts    = points?.[u.id]||0
-            const uRank   = getRank(uPts)
-            const uStrikes= strikes?.[u.id]?.[wk]||0
-            const uPct    = userPct(u.id)
-            const uChores = userChores(u.id)
+      {/* ── FAMILY STRIP ──────────────────────────────────────────────── */}
+      <div style={{ paddingLeft:16, paddingBottom:8, flexShrink:0 }}>
+        <div style={{ display:'flex', gap:8, overflowX:'auto', paddingRight:16, paddingBottom:2 }}>
+          {users.map(u=>{
+            const uPts=points?.[u.id]||0, uRank=getRank(uPts, effectiveRanks)
+            const uChores=chores.filter(c=>todaySU[c.id]===u.id)
+            const uDone=uChores.filter(c=>completions?.[u.id]?.[c.id]?.date===today&&completions[u.id][c.id].status==='approved').length
             return (
-              <div key={u.id} onClick={()=>{ setProfileUid(u.id); setModal('profile') }}
-                style={{ flexShrink:0, width:90, background:'#1c1c1c', borderRadius:16, padding:'12px 8px', textAlign:'center', cursor:'pointer', border:`2px solid ${u.id===currentUser.id?u.color+'66':'rgba(255,255,255,.07)'}` }}>
-                <div style={{ width:44, height:44, borderRadius:13, background:u.color+'22', border:`2px solid ${u.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', margin:'0 auto 6px' }}>{u.avatar}</div>
-                <div style={{ fontFamily:"'Fredoka One',cursive", color:u.color, fontSize:'.82rem', marginBottom:2, lineHeight:1.2 }}>{u.name.split(' ')[0]}</div>
-                <div style={{ fontSize:'.65rem', color:'#555', fontWeight:700 }}>{uRank.icon} {uRank.name}</div>
-                <div style={{ fontSize:'.7rem', color:color, fontWeight:800, marginTop:3 }}>⭐ {uPts}</div>
-                {u.role==='kid'&&uChores.length>0&&(
-                  <div style={{ marginTop:4 }}>
-                    <ProgressBar pct={uPct} color={u.color} height={3} />
-                    <div style={{ fontSize:'.6rem', color:'#555', marginTop:2, fontWeight:600 }}>{userDone(u.id)}/{uChores.length} chores</div>
-                  </div>
-                )}
+              <div key={u.id} onClick={()=>{ setProfileUid(u.id); setModal('profile') }} style={{ flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:3, cursor:'pointer' }}>
+                <div style={{ width:46, height:46, borderRadius:14, background:u.color+'22', border:`2px solid ${u.id===currentUser.id?u.color:u.color+'55'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem', position:'relative' }}>
+                  {u.avatar}
+                  {u.role==='kid'&&uChores.length>0&&uDone===uChores.length&&<div style={{ position:'absolute', bottom:-4, right:-4, width:16, height:16, borderRadius:'50%', background:'#22c55e', border:'2px solid #08091a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.55rem' }}>✓</div>}
+                  {u.role==='kid'&&uChores.length>0&&uDone<uChores.length&&<div style={{ position:'absolute', bottom:-4, right:-4, background:u.color, borderRadius:999, padding:'1px 4px', border:'2px solid #08091a', fontSize:'.5rem', fontWeight:800, color:'#000' }}>{uDone}/{uChores.length}</div>}
+                </div>
+                <div style={{ fontSize:'.6rem', fontWeight:800, color:u.id===currentUser.id?u.color:'#555' }}>{u.name.split(' ')[0]}</div>
               </div>
             )
           })}
         </div>
       </div>
 
-      {/* ── TODAY: ROUTINE + CALENDAR COMBINED ─────────────────────────────── */}
-      <div style={{ marginBottom:16 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.85rem', color:'#555', letterSpacing:.5, textTransform:'uppercase' }}>Today's Schedule</div>
-          <div style={{ display:'flex', gap:6 }}>
-            {isParent && <Btn sm variant='ghost' onClick={()=>openRoutineEdit(null)}>+ Routine</Btn>}
-            <Btn sm variant='ghost' onClick={()=>navigate('/calendar')}>Calendar</Btn>
-          </div>
-        </div>
+      {/* ── CALENDAR GRID ─────────────────────────────────────────────── */}
+      <HomeCalendar
+        calendars={calendars} specialDays={specialDays}
+        currentUser={currentUser} isParent={isParent}
+        color={color} today={today}
+        navigate={navigate}
+        allEvents={allEvents}
+      />
 
-        {/* Daily routine timeline */}
-        {schedule.map(s => (
-          <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'#1c1c1c', borderRadius:12, marginBottom:8, borderLeft:`3px solid ${color}` }}>
-            <div style={{ fontSize:'1.3rem', flexShrink:0 }}>{s.icon}</div>
-            <div style={{ flex:1 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                {s.time && <span style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.78rem', color }}>{s.time}</span>}
-                <span style={{ fontWeight:800, fontSize:'.88rem' }}>{s.label}</span>
-              </div>
-              {s.note && <div style={{ fontSize:'.72rem', color:'#555', fontWeight:600, marginTop:2 }}>{s.note}</div>}
-            </div>
-            {isParent && (
-              <div style={{ display:'flex', gap:4 }}>
-                <button onClick={()=>openRoutineEdit(s)} style={{ background:'transparent', border:'none', color:'#666', cursor:'pointer', fontSize:'.9rem', padding:4 }}>✏️</button>
-                <button onClick={()=>deleteRoutine(s.id)} style={{ background:'transparent', border:'none', color:'#e53935', cursor:'pointer', fontSize:'.9rem', padding:4 }}>✕</button>
-              </div>
-            )}
-          </div>
-        ))}
+      {/* ── MAIN GRID ─────────────────────────────────────────────────── */}
+      <div style={{ flex:1, padding:'0 16px 16px', overflow:'hidden', display:'flex', flexDirection:'column', gap:8 }}>
 
-        {/* Calendar events mixed in */}
-        {upcoming.length > 0 && (
+        {isKid && (
           <>
-            <div style={{ fontSize:'.72rem', color:'#555', fontWeight:800, letterSpacing:.5, textTransform:'uppercase', margin:'14px 0 8px' }}>📅 Coming Up</div>
-            {upcoming.map(ev=>(
-              <div key={ev.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'#1c1c1c', borderRadius:12, marginBottom:8, borderLeft:`3px solid ${ev.color}` }}>
-                <div style={{ minWidth:44, textAlign:'center' }}>
-                  <div style={{ fontSize:'.65rem', color:'#555', fontWeight:800, textTransform:'uppercase' }}>{new Date(ev.date+'T00:00:00').toLocaleDateString('en-US',{month:'short'})}</div>
-                  <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.3rem', color:ev.color, lineHeight:1 }}>{new Date(ev.date+'T00:00:00').getDate()}</div>
-                </div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:800, fontSize:'.88rem' }}>{ev.title}</div>
-                  <div style={{ fontSize:'.72rem', color:'#555', fontWeight:600 }}>{ev.date===today?'Today':formatDate(ev.date)}{ev.time?` · ${ev.time}`:''}</div>
-                </div>
-              </div>
-            ))}
+            {/* Row 1 — chores + learn */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='✅' label='Chores'
+                sub={workday ? `${myDone}/${myChores.length} done` : 'Weekend!'}
+                gradient='linear-gradient(135deg,#0d3320,#1a5e3a)'
+                onClick={()=>navigate('/chores')} />
+              <Tile icon='📚' label='Learn'
+                sub={`${myLessons} done total`}
+                gradient='linear-gradient(135deg,#0d1545,#1a2880)'
+                onClick={()=>navigate('/learn')} />
+            </div>
+
+            {/* Row 2 — meals + calendar */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              {settings?.kidControls?.meals !== false && (
+                <Tile icon='🍽️' label='Chow Hall'
+                  sub="Today's menu"
+                  gradient='linear-gradient(135deg,#1a0800,#4d2200)'
+                  onClick={()=>navigate('/meals')} />
+              )}
+              {settings?.kidControls?.calendar !== false && (
+                <Tile icon='📅' label='Calendar'
+                  sub={nextEvent ? nextEvent.title : 'View schedule'}
+                  gradient='linear-gradient(135deg,#1a0535,#4a0f8a)'
+                  onClick={()=>navigate('/calendar')} />
+              )}
+              {/* fill if one is hidden */}
+              {settings?.kidControls?.meals === false && settings?.kidControls?.calendar !== false && (
+                <Tile icon='👤' label='My Profile'
+                  sub={`${myPoints} pts · ${myRank.name}`}
+                  gradient='linear-gradient(135deg,#1a1000,#3d2800)'
+                  onClick={()=>navigate('/profile')} />
+              )}
+            </div>
+
+            {/* Row 3 — profile + request */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='👤' label='My Profile'
+                sub={`${myPoints} pts · ${myRank.name}`}
+                gradient='linear-gradient(135deg,#1a1000,#3d2800)'
+                onClick={()=>navigate('/profile')} />
+              {settings?.kidControls?.requests !== false
+                ? <Tile icon='✨' label='Make Request'
+                    sub={pendingReqs > 0 ? `${pendingReqs} pending` : 'Ask for something'}
+                    gradient='linear-gradient(135deg,#200030,#6b0fa8)'
+                    onClick={()=>{ setReqType(allRequestTypes[0]?.id); setModal('request') }} />
+                : <Tile icon='🖥️' label='Display Mode'
+                    sub='Family hub screen'
+                    gradient='linear-gradient(135deg,#001a2e,#003d6b)'
+                    onClick={()=>navigate('/display')} />
+              }
+            </div>
+          </>
+        )}
+
+        {isParent && (
+          <>
+            {/* Row 1 */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='✅' label='Chores'
+                sub={pendingApprovals > 0 ? `${pendingApprovals} need approval` : 'All caught up'}
+                gradient='linear-gradient(135deg,#0d3320,#1a5e3a)'
+                onClick={()=>navigate('/chores')}
+                badge={pendingApprovals > 0 ? pendingApprovals : null} />
+              <Tile icon='⚙️' label='Control'
+                sub={(pendingApprovals+pendingRequests) > 0 ? `${pendingApprovals+pendingRequests} items` : 'All good'}
+                gradient='linear-gradient(135deg,#200030,#6b0fa8)'
+                onClick={()=>navigate('/parent')}
+                badge={(pendingApprovals+pendingRequests) > 0 ? (pendingApprovals+pendingRequests) : null} />
+            </div>
+
+            {/* Row 2 */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='🍽️' label='Chow Hall'
+                sub={(() => { const mr = mealRequests?.filter(r=>r.status==='pending').length||0; return mr > 0 ? `${mr} meal request${mr>1?'s':''}` : 'Plan meals' })()}
+                gradient='linear-gradient(135deg,#1a0800,#4d2200)'
+                onClick={()=>navigate('/meals')}
+                badge={mealRequests?.filter(r=>r.status==='pending').length || null} />
+              <Tile icon='📚' label='Learn'
+                sub='Manage lessons'
+                gradient='linear-gradient(135deg,#0d1545,#1a2880)'
+                onClick={()=>navigate('/learn')} />
+            </div>
+
+            {/* Row 3 */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='📅' label='Calendar'
+                sub={nextEvent ? nextEvent.title : 'View & add events'}
+                gradient='linear-gradient(135deg,#1a0535,#4a0f8a)'
+                onClick={()=>navigate('/calendar')} />
+              <Tile icon='👤' label='My Profile'
+                sub={`${myPoints} pts · ${myRank.name}`}
+                gradient='linear-gradient(135deg,#1a1000,#3d2800)'
+                onClick={()=>navigate('/profile')} />
+            </div>
+
+            {/* Row 4 */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, flex:1 }}>
+              <Tile icon='🖥️' label='Display Mode'
+                sub='Portal family hub'
+                gradient='linear-gradient(135deg,#001a2e,#003d6b)'
+                onClick={()=>navigate('/display')} />
+            </div>
           </>
         )}
       </div>
 
-      {/* ── TODAY'S CHORES (family view) ──────────────────────────────────── */}
-      {workday && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.85rem', color:'#555', letterSpacing:.5, textTransform:'uppercase', marginBottom:10 }}>Today's Assignments</div>
-          {users.filter(u=>u.role==='kid').map(kid=>{
-            const kc = userChores(kid.id)
-            if (kc.length===0) return null
-            return (
-              <div key={kid.id} style={{ background:'#1c1c1c', borderRadius:12, padding:'10px 14px', marginBottom:8 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                  <div style={{ fontSize:'1.1rem' }}>{kid.avatar}</div>
-                  <div style={{ fontWeight:800, color:kid.color, fontSize:'.85rem', flex:1 }}>{kid.name}</div>
-                  <div style={{ fontSize:'.72rem', fontWeight:700, color:userPct(kid.id)===100?'#43a047':color }}>{userDone(kid.id)}/{kc.length}</div>
-                </div>
-                <ProgressBar pct={userPct(kid.id)} color={kid.color} height={4} />
-                <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:6 }}>
-                  {kc.map(c=>{
-                    const st = completions?.[kid.id]?.[c.id]?.date===today?completions[kid.id][c.id].status:'open'
-                    return (
-                      <div key={c.id} style={{ fontSize:'.65rem', fontWeight:700, padding:'2px 8px', borderRadius:999, background:st==='approved'?'rgba(67,160,71,.15)':st==='pending'?'rgba(245,166,35,.15)':'rgba(255,255,255,.05)', color:st==='approved'?'#43a047':st==='pending'?color:'#555' }}>
-                        {st==='approved'?'✓ ':st==='pending'?'⏳ ':''}{c.label}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* ── MODALS ────────────────────────────────────────────────────── */}
 
-      {/* ── KID: Personal status ─────────────────────────────────────────── */}
-      {isKid && (
-        <>
-          {lostWknd ? (
-            <div style={{ background:'rgba(229,57,53,.1)', border:'1.5px solid rgba(229,57,53,.3)', borderRadius:14, padding:'12px 16px', marginBottom:14 }}>
-              <div style={{ fontWeight:800, color:'#e53935' }}>❌ Weekend Lost — 3 strikes this week</div>
-            </div>
-          ) : (
-            <div style={{ background:'rgba(67,160,71,.08)', border:'1.5px solid rgba(67,160,71,.2)', borderRadius:14, padding:'10px 16px', marginBottom:14, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ fontWeight:800, color:'#43a047', fontSize:'.88rem' }}>✅ Weekend Earned · {3-myStrikes} strikes left</div>
-              <StrikeDots count={myStrikes} />
-            </div>
-          )}
-
-          {myPunishments.map(p=>(
-            <div key={p.id} style={{ background:'rgba(229,57,53,.08)', border:'1.5px solid rgba(229,57,53,.2)', borderRadius:12, padding:'10px 14px', marginBottom:10, display:'flex', gap:10 }}>
-              <div style={{ fontSize:'1.2rem' }}>⚠️</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:800, color:'#e53935', fontSize:'.85rem' }}>Punishment Active</div>
-                <div style={{ fontSize:'.82rem', fontWeight:600, marginTop:2 }}>{p.desc}</div>
-                {p.buyoutTask&&<div style={{ fontSize:'.75rem', color:color, marginTop:4, fontWeight:700 }}>💪 Buyout: {p.buyoutTask}</div>}
-              </div>
-            </div>
-          ))}
-
-          {/* My rank/points card */}
-          <Card style={{ marginBottom:14 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <RankBadge xp={myPoints} />
-              <PointsPill points={myPoints} color={color} />
-            </div>
-            {nextRank&&(
-              <>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.72rem', color:'#555', fontWeight:700, marginBottom:4 }}>
-                  <span>To {nextRank.name}</span><span>{myPoints}/{nextRank.minXP} XP</span>
-                </div>
-                <ProgressBar pct={Math.round((myPoints/nextRank.minXP)*100)} color={nextRank.color} />
-              </>
-            )}
-          </Card>
-
-          {/* Recent requests */}
-          {myRequests.length>0&&(
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'.85rem', color:'#555', letterSpacing:.5, textTransform:'uppercase', marginBottom:8 }}>My Requests</div>
-              {myRequests.map(r=>(
-                <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'#1c1c1c', borderRadius:12, marginBottom:8, borderLeft:`3px solid ${r.status==='approved'?'#43a047':r.status==='denied'?'#e53935':r.status==='counter'?color:'#555'}` }}>
-                  <div style={{ fontSize:'1.2rem' }}>{r.typeIcon}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:800, fontSize:'.85rem' }}>{r.typeLabel}</div>
-                    {r.parentNote&&<div style={{ fontSize:'.75rem', color:color, marginTop:2, fontWeight:600 }}>"{r.parentNote}"</div>}
-                  </div>
-                  <Badge color={r.status==='approved'?'#43a047':r.status==='denied'?'#e53935':r.status==='counter'?color:'#888'} bg='rgba(255,255,255,.05)'>{r.status==='counter'?'Counter':r.status}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Btn full variant='dark' onClick={()=>setModal('request')}>✨ Make a Request</Btn>
-        </>
-      )}
-
-      {/* ── PARENT: Quick stats ───────────────────────────────────────────── */}
-      {isParent&&(
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginTop:8 }}>
-          {[
-            { label:'Approvals', val:pendingApprovals, icon:'⏳', action:()=>navigate('/parent') },
-            { label:'Requests', val:pendingRequests, icon:'✨', action:()=>navigate('/parent') },
-            { label:'Kids', val:kids.length, icon:'👧', action:()=>navigate('/parent?tab=accounts') },
-          ].map(s=>(
-            <div key={s.label} onClick={s.action} style={{ background:'#1c1c1c', borderRadius:14, padding:'14px 10px', textAlign:'center', cursor:'pointer', border:s.val>0?`1.5px solid ${color}44`:'1.5px solid rgba(255,255,255,.07)' }}>
-              <div style={{ fontSize:'1.4rem', marginBottom:4 }}>{s.icon}</div>
-              <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.3rem', color:s.val>0?color:'#fff' }}>{s.val}</div>
-              <div style={{ fontSize:'.65rem', color:'#555', fontWeight:700 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── MODALS ─────────────────────────────────────────────────────────── */}
-
-      {/* Family member profile modal */}
-      {modal==='profile'&&profileUser&&(() => {
-        const pv = profileVisibility || {}
-        const viewingSelf = profileUser.id === currentUser.id
-        // Parents see everything. Others see based on visibility setting ('all' = everyone, 'parents' = parents only)
-        const canSee = (key) => isParent || viewingSelf || pv[key] !== 'parents'
-        const pPts = points?.[profileUser.id]||0
-        const pRank = getRank(pPts)
-        const pNext = getNextRank(pPts)
-        const pBadges = badges?.[profileUser.id]||[]
-        const pLessons = Object.keys(learnProgress?.[profileUser.id]||{}).filter(k=>k!=='_customSubjects').length
-        const pReadWk = Object.keys(readingLog?.[profileUser.id]||{}).filter(d=>d>=wk).length
-        const pWriteWk = Object.keys(writingLog?.[profileUser.id]||{}).filter(d=>d>=wk).length
-        const pChoresWk = Object.values(completions?.[profileUser.id]||{}).filter(c=>c.date>=wk&&c.status==='approved').length
+      {/* Profile sheet */}
+      {modal==='profile'&&profileUser&&(()=>{
+        const pv=profileVisibility||{}
+        const viewSelf=profileUser.id===currentUser.id
+        const canSee=(key)=>isParent||viewSelf||pv[key]!=='parents'
+        const pPts=points?.[profileUser.id]||0, pRank=getRank(pPts, effectiveRanks), pNext=getNextRank(pPts, effectiveRanks)
+        const pBadges=badges?.[profileUser.id]||[]
+        const pLessons=Object.keys(learnProgress?.[profileUser.id]||{}).filter(k=>k!=='_customSubjects').length
+        const pReadWk=Object.keys(readingLog?.[profileUser.id]||{}).filter(d=>d>=wk).length
+        const pWriteWk=Object.keys(writingLog?.[profileUser.id]||{}).filter(d=>d>=wk).length
+        const pChoresWk=Object.values(completions?.[profileUser.id]||{}).filter(c=>c.date>=wk&&c.status==='approved').length
+        const pChores=chores.filter(c=>todaySU[c.id]===profileUser.id)
         return (
-          <Modal onClose={()=>setModal(null)} maxWidth={480}>
-            {/* Header */}
-            <div style={{ textAlign:'center', marginBottom:18 }}>
-              <div style={{ width:80, height:80, borderRadius:22, background:profileUser.color+'22', border:`3px solid ${profileUser.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.5rem', margin:'0 auto 10px' }}>{profileUser.avatar}</div>
-              <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.5rem', color:profileUser.color }}>{profileUser.name}</div>
-              {profileUser.role==='parent'
-                ? <Badge color='#9c27b0' bg='rgba(156,39,176,.15)'>PARENT</Badge>
-                : canSee('rank') && <div style={{ fontSize:'.8rem', color:pRank.color, fontWeight:800, marginTop:2 }}>{pRank.icon} {pRank.name}</div>
-              }
-            </div>
-
-            {profileUser.role==='kid' && (
-              <>
-                {/* Points + rank progress */}
-                {canSee('points') && (
-                  <div style={{ background:'#141414', borderRadius:14, padding:'14px', marginBottom:12 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: pNext?10:0 }}>
-                      <span style={{ fontWeight:800, fontSize:'.9rem' }}>⭐ {pPts} points</span>
-                      {pNext && canSee('rank') && <span style={{ fontSize:'.72rem', color:'#666', fontWeight:700 }}>{pNext.minXP-pPts} to {pNext.name}</span>}
-                    </div>
-                    {pNext && canSee('rank') && <ProgressBar pct={Math.round((pPts/pNext.minXP)*100)} color={pNext.color} />}
+          <div onClick={()=>setModal(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', display:'flex', alignItems:'flex-end', justifyContent:'center', zIndex:200 }}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:'linear-gradient(180deg,#1a1a40,#0f0f28)', borderRadius:'28px 28px 0 0', padding:'20px 20px 36px', width:'100%', maxWidth:520, maxHeight:'85vh', overflowY:'auto', border:'1.5px solid rgba(255,255,255,.1)' }}>
+              <div style={{ width:36, height:4, borderRadius:999, background:'rgba(255,255,255,.15)', margin:'0 auto 16px' }} />
+              <div style={{ textAlign:'center', marginBottom:16 }}>
+                <div style={{ width:72, height:72, borderRadius:20, background:profileUser.color+'22', border:`3px solid ${profileUser.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.2rem', margin:'0 auto 8px', boxShadow:`0 0 20px ${profileUser.color}44` }}>{profileUser.avatar}</div>
+                <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.4rem', color:profileUser.color }}>{profileUser.name}</div>
+                {profileUser.role==='parent'
+                  ? <span style={{ fontSize:'.72rem', fontWeight:800, color:'#9c27b0', background:'rgba(156,39,176,.15)', padding:'3px 10px', borderRadius:999 }}>PARENT</span>
+                  : canSee('rank')&&<div style={{ fontSize:'.78rem', color:pRank.color, fontWeight:800 }}>{pRank.icon} {pRank.name}</div>
+                }
+              </div>
+              {profileUser.role==='kid'&&<>
+                {canSee('points')&&<div style={{ background:'rgba(255,255,255,.05)', borderRadius:14, padding:'12px', marginBottom:10 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:pNext?8:0 }}>
+                    <span style={{ fontWeight:800 }}>⭐ {pPts} points</span>
+                    {pNext&&canSee('rank')&&<span style={{ fontSize:'.7rem', color:'#666', fontWeight:700 }}>{pNext.minXP-pPts} to {pNext.name}</span>}
                   </div>
-                )}
-
-                {/* Week stats grid */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:12 }}>
-                  {canSee('chores') && <StatBox icon='✅' label='Chores this week' val={pChoresWk} color='#43a047' />}
-                  {canSee('lessons') && <StatBox icon='📚' label='Lessons done' val={pLessons} color='#4a90e2' />}
-                  {canSee('reading') && <StatBox icon='📖' label='Reading days' val={pReadWk} color='#9c27b0' />}
-                  {canSee('writing') && <StatBox icon='✏️' label='Writing days' val={pWriteWk} color='#e91e8c' />}
+                  {pNext&&canSee('rank')&&<ProgressBar pct={Math.round((pPts/pNext.minXP)*100)} color={pNext.color} />}
+                </div>}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
+                  {[
+                    canSee('chores')&&{icon:'✅',label:'Chores',val:pChoresWk,color:'#22c55e'},
+                    canSee('lessons')&&{icon:'📚',label:'Lessons',val:pLessons,color:'#4a90e2'},
+                    canSee('reading')&&{icon:'📖',label:'Reading',val:pReadWk+'d',color:'#9c27b0'},
+                    canSee('writing')&&{icon:'✏️',label:'Writing',val:pWriteWk+'d',color:'#e91e8c'},
+                  ].filter(Boolean).map(s=>(
+                    <div key={s.label} style={{ background:'rgba(255,255,255,.05)', borderRadius:12, padding:'10px 6px', textAlign:'center' }}>
+                      <div style={{ fontSize:'1rem', marginBottom:2 }}>{s.icon}</div>
+                      <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.1rem', color:s.color }}>{s.val}</div>
+                      <div style={{ fontSize:'.58rem', color:'#555', fontWeight:700 }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-
-                {/* Today's chores */}
-                {canSee('chores') && (
-                  <>
-                    <div style={{ fontWeight:800, fontSize:'.8rem', color:'#888', marginBottom:8, letterSpacing:.5 }}>TODAY'S CHORES</div>
-                    {userChores(profileUser.id).length===0
-                      ? <div style={{ fontSize:'.83rem', color:'#555', fontWeight:600, marginBottom:12 }}>No chores assigned today</div>
-                      : <div style={{ marginBottom:12 }}>{userChores(profileUser.id).map(c=>{
-                          const st = completions?.[profileUser.id]?.[c.id]?.date===today?completions[profileUser.id][c.id].status:'open'
-                          return (
-                            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'#141414', borderRadius:10, marginBottom:6 }}>
-                              <div>{st==='approved'?'✅':st==='pending'?'⏳':'⬜'}</div>
-                              <div style={{ flex:1, fontWeight:600, fontSize:'.85rem' }}>{c.label}</div>
-                              <Badge color={st==='approved'?'#43a047':st==='pending'?color:'#555'} bg='rgba(255,255,255,.05)'>{st==='approved'?'Done':st==='pending'?'Pending':'To Do'}</Badge>
-                            </div>
-                          )
-                        })}</div>
-                    }
-                  </>
-                )}
-
-                {/* Badges */}
-                {canSee('badges') && pBadges.length>0 && (
-                  <>
-                    <div style={{ fontWeight:800, fontSize:'.8rem', color:'#888', marginBottom:8, letterSpacing:.5 }}>BADGES EARNED</div>
-                    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
-                      {pBadges.map(bid=>{ const b=BADGES.find(x=>x.id===bid); return b?(
-                        <div key={bid} title={b.desc} style={{ background:'#141414', borderRadius:10, padding:'6px 10px', fontSize:'.78rem', fontWeight:700, display:'flex', alignItems:'center', gap:5 }}>{b.icon} {b.label}</div>
-                      ):null })}
+                {canSee('chores')&&pChores.length>0&&<>
+                  <div style={{ fontSize:'.68rem', color:'#555', fontWeight:800, letterSpacing:.5, textTransform:'uppercase', marginBottom:6 }}>Today's Chores</div>
+                  {pChores.map(c=>{
+                    const st=completions?.[profileUser.id]?.[c.id]?.date===today?completions[profileUser.id][c.id].status:'open'
+                    return <div key={c.id} style={{ display:'flex', alignItems:'center', gap:9, padding:'7px 10px', background:'rgba(255,255,255,.04)', borderRadius:10, marginBottom:5 }}>
+                      <span>{st==='approved'?'✅':st==='pending'?'⏳':'⬜'}</span>
+                      <div style={{ flex:1, fontWeight:600, fontSize:'.83rem' }}>{c.label}</div>
+                      <span style={{ fontSize:'.68rem', fontWeight:700, color:st==='approved'?'#22c55e':st==='pending'?color:'#555' }}>{st==='approved'?'Done':st==='pending'?'Pending':'To Do'}</span>
                     </div>
-                  </>
-                )}
-
-                {/* Strikes — visibility controlled */}
-                {canSee('strikes') && (
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', background:'#141414', borderRadius:10, marginBottom:10 }}>
-                    <div style={{ fontWeight:700, fontSize:'.85rem' }}>Strikes this week</div>
-                    <StrikeDots count={strikes?.[profileUser.id]?.[wk]||0} />
-                  </div>
-                )}
-
-                {/* Punishments — visibility controlled */}
-                {canSee('punishments') && punishments.filter(p=>p.kidId===profileUser.id&&!p.resolved).length>0 && (
-                  <>
-                    <div style={{ fontWeight:800, fontSize:'.8rem', color:'#e53935', marginBottom:8, letterSpacing:.5 }}>ACTIVE PUNISHMENTS</div>
-                    {punishments.filter(p=>p.kidId===profileUser.id&&!p.resolved).map(p=>(
-                      <div key={p.id} style={{ padding:'8px 12px', background:'rgba(229,57,53,.08)', borderRadius:10, marginBottom:6, fontSize:'.83rem', fontWeight:600, color:'#e53935' }}>⚠️ {p.desc}</div>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-            <Btn full variant='ghost' style={{ marginTop:8 }} onClick={()=>setModal(null)}>Close</Btn>
-          </Modal>
+                  })}
+                </>}
+                {canSee('strikes')&&<div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 12px', background:'rgba(255,255,255,.04)', borderRadius:10, marginTop:6 }}>
+                  <span style={{ fontWeight:700, fontSize:'.83rem' }}>Strikes this week</span>
+                  <StrikeDots count={strikes?.[profileUser.id]?.[wk]||0} max={settings?.strikeLimit??3} />
+                </div>}
+              </>}
+              <button onClick={()=>setModal(null)} style={{ width:'100%', marginTop:14, padding:'11px', borderRadius:14, border:'none', background:'rgba(255,255,255,.07)', color:'#888', fontWeight:800, cursor:'pointer' }}>Close</button>
+            </div>
+          </div>
         )
       })()}
 
-      {/* Request modal */}
-      {modal==='routine'&&(
-        <Modal onClose={()=>setModal(null)}>
-          <ModalTitle>{rEditId?'Edit Routine Item':'Add to Routine'} 🕐</ModalTitle>
-          <div style={{ marginBottom:6, fontSize:'.8rem', color:'#666', fontWeight:700 }}>Icon</div>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
-            {['📋','🍳','🧹','🍔','👕','📖','✏️','📚','🌤️','🚿','🍽️','🍦','🌙','⏰','🎮','💪','🦷','🛏️'].map(ic=>(
-              <button key={ic} onClick={()=>setRIcon(ic)} style={{ fontSize:'1.3rem', padding:5, borderRadius:9, border:rIcon===ic?`2px solid ${color}`:'2px solid transparent', background:'#141414', cursor:'pointer' }}>{ic}</button>
-            ))}
-          </div>
-          <Input value={rTime} onChange={e=>setRTime(e.target.value)} placeholder='Time (e.g. 0800–1000)' style={{ marginBottom:10 }} />
-          <Input value={rLabel} onChange={e=>setRLabel(e.target.value)} placeholder='What is it? (e.g. Chore Time)' style={{ marginBottom:10 }} autoFocus />
-          <Input value={rNote} onChange={e=>setRNote(e.target.value)} placeholder='Note (optional)' rows={2} style={{ marginBottom:18 }} />
-          <div style={{ display:'flex', gap:10 }}>
-            <Btn style={{ flex:1 }} onClick={saveRoutine}>{rEditId?'Save':'Add'}</Btn>
-            <Btn variant='ghost' onClick={()=>setModal(null)}>Cancel</Btn>
-          </div>
-        </Modal>
-      )}
-
+      {/* Request sheet */}
       {modal==='request'&&(
-        <Modal onClose={()=>setModal(null)}>
-          <ModalTitle>Make a Request ✨</ModalTitle>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
-            {REQUEST_TYPES.map(rt=>(
-              <button key={rt.id} onClick={()=>setReqType(rt.id)} style={{ padding:'10px 4px', borderRadius:12, border:reqType===rt.id?`2px solid ${color}`:'2px solid rgba(255,255,255,.07)', background:reqType===rt.id?color+'22':'#141414', cursor:'pointer', textAlign:'center' }}>
-                <div style={{ fontSize:'1.4rem', marginBottom:4 }}>{rt.icon}</div>
-                <div style={{ fontSize:'.6rem', fontWeight:800, color:reqType===rt.id?color:'#888' }}>{rt.label}</div>
-              </button>
-            ))}
+        <div onClick={()=>setModal(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', display:'flex', alignItems:'flex-end', justifyContent:'center', zIndex:200 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'linear-gradient(180deg,#1a1a40,#0f0f28)', borderRadius:'28px 28px 0 0', padding:'20px 20px 36px', width:'100%', maxWidth:520, maxHeight:'80vh', overflowY:'auto', border:'1.5px solid rgba(255,255,255,.1)' }}>
+            <div style={{ width:36, height:4, borderRadius:999, background:'rgba(255,255,255,.15)', margin:'0 auto 16px' }} />
+            <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.2rem', marginBottom:14 }}>Make a Request ✨</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12 }}>
+              {allRequestTypes.map(rt=>(
+                <button key={rt.id} onClick={()=>setReqType(rt.id)} style={{ padding:'9px 4px', borderRadius:12, border:reqType===rt.id?`2px solid ${color}`:'2px solid rgba(255,255,255,.07)', background:reqType===rt.id?color+'22':'rgba(255,255,255,.04)', cursor:'pointer', textAlign:'center' }}>
+                  <div style={{ fontSize:'1.3rem', marginBottom:3 }}>{rt.icon}</div>
+                  <div style={{ fontSize:'.58rem', fontWeight:800, color:reqType===rt.id?color:'#888' }}>{rt.label}</div>
+                </button>
+              ))}
+            </div>
+            <input value={reqDate} onChange={e=>setReqDate(e.target.value)} type='date' style={{ background:'rgba(255,255,255,.06)', border:'1.5px solid rgba(255,255,255,.1)', borderRadius:12, padding:'9px 12px', color:'#fff', fontFamily:'Nunito,sans-serif', fontWeight:600, width:'100%', marginBottom:9, fontSize:'.88rem' }} />
+            <textarea value={reqNote} onChange={e=>setReqNote(e.target.value)} placeholder='Tell us about it...' rows={3} style={{ background:'rgba(255,255,255,.06)', border:'1.5px solid rgba(255,255,255,.1)', borderRadius:12, padding:'9px 12px', color:'#fff', fontFamily:'Nunito,sans-serif', fontWeight:600, width:'100%', marginBottom:14, fontSize:'.88rem', resize:'vertical' }} />
+            <button onClick={submitRequest} style={{ width:'100%', padding:'13px', borderRadius:16, border:'none', background:`linear-gradient(135deg,${color},#ff6b35)`, color:'#000', fontWeight:800, fontSize:'1rem', cursor:'pointer' }}>Send Request 🚀</button>
           </div>
-          <Input value={reqDate} onChange={e=>setReqDate(e.target.value)} type='date' style={{ marginBottom:10 }} />
-          <Input value={reqNote} onChange={e=>setReqNote(e.target.value)} placeholder='Tell us about it — who, what, where...' rows={3} style={{ marginBottom:18 }} autoFocus />
-          <div style={{ display:'flex', gap:10 }}>
-            <Btn style={{ flex:1 }} onClick={submitRequest}>Send Request</Btn>
-            <Btn variant='ghost' onClick={()=>setModal(null)}>Cancel</Btn>
-          </div>
-        </Modal>
+        </div>
       )}
 
-      {/* Weekly breakdown */}
-      {modal==='weekly'&&(
-        <Modal onClose={()=>setModal(null)} maxWidth={520}>
-          <ModalTitle>📊 This Week</ModalTitle>
-          {users.map(u=>{
-            const s = weeklyStats(u.id)
-            return (
-              <div key={u.id} style={{ marginBottom:18 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                  <div style={{ fontSize:'1.2rem' }}>{u.avatar}</div>
-                  <div style={{ fontFamily:"'Fredoka One',cursive", color:u.color }}>{u.name}</div>
-                  <PointsPill points={points?.[u.id]||0} color={u.color} />
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
-                  {[
-                    { label:'Chores', val:s.choresDone, icon:'✅', color:'#43a047' },
-                    { label:'Lessons', val:s.lessonsD, icon:'📚', color:'#4a90e2' },
-                    { label:'Reading', val:s.readDays+'d', icon:'📖', color:'#9c27b0' },
-                    { label:'Writing', val:s.writeDays+'d', icon:'✏️', color:'#e91e8c' },
-                  ].map(st=>(
-                    <div key={st.label} style={{ background:'#141414', borderRadius:10, padding:'10px 6px', textAlign:'center' }}>
-                      <div style={{ fontSize:'1.1rem', marginBottom:4 }}>{st.icon}</div>
-                      <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.1rem', color:st.color }}>{st.val}</div>
-                      <div style={{ fontSize:'.62rem', color:'#555', fontWeight:700 }}>{st.label}</div>
-                    </div>
-                  ))}
-                </div>
-                {u.role==='kid'&&s.strikesW>0&&<div style={{ fontSize:'.78rem', color:'#e53935', fontWeight:700, marginTop:6 }}>⚠️ {s.strikesW} strike{s.strikesW>1?'s':''} this week</div>}
-              </div>
-            )
-          })}
-          <Btn full variant='ghost' onClick={()=>setModal(null)}>Close</Btn>
-        </Modal>
-      )}
-
-      {/* Monthly report */}
-      {modal==='monthly'&&(
-        <Modal onClose={()=>setModal(null)} maxWidth={520}>
-          <ModalTitle>📈 {new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'})} Report</ModalTitle>
-          {users.map(u=>{
-            const s = monthlyStats(u.id)
-            const rank = getRank(s.ptsEarned)
-            return (
-              <div key={u.id} style={{ marginBottom:20, paddingBottom:20, borderBottom:'1px solid rgba(255,255,255,.06)' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-                  <div style={{ width:44, height:44, borderRadius:13, background:u.color+'22', border:`2px solid ${u.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem' }}>{u.avatar}</div>
-                  <div>
-                    <div style={{ fontFamily:"'Fredoka One',cursive", color:u.color }}>{u.name}</div>
-                    <div style={{ fontSize:'.72rem', color:'#666', fontWeight:700 }}>{rank.icon} {rank.name} · {s.ptsEarned} pts total</div>
-                  </div>
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
-                  {[
-                    { label:'Chores', val:s.choresM, icon:'✅', color:'#43a047' },
-                    { label:'Lessons', val:s.lessonsM, icon:'📚', color:'#4a90e2' },
-                    { label:'Read Days', val:s.readM, icon:'📖', color:'#9c27b0' },
-                    { label:'Write Days', val:s.writeM, icon:'✏️', color:'#e91e8c' },
-                  ].map(st=>(
-                    <div key={st.label} style={{ background:'#141414', borderRadius:10, padding:'10px 6px', textAlign:'center' }}>
-                      <div style={{ fontSize:'1.1rem', marginBottom:4 }}>{st.icon}</div>
-                      <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.1rem', color:st.color }}>{st.val}</div>
-                      <div style={{ fontSize:'.62rem', color:'#555', fontWeight:700 }}>{st.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-          <Btn full variant='ghost' onClick={()=>setModal(null)}>Close</Btn>
-        </Modal>
-      )}
-
-      <Toast toast={toast} />
-    </PageWrap>
+      {toast&&<div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', fontWeight:800, padding:'11px 24px', borderRadius:999, fontSize:'.85rem', zIndex:999, color:'#000', background:toast.bg, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,.5)', animation:'fadeUp .25s ease' }}>{toast.msg}<style>{`@keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style></div>}
+    </div>
   )
 }

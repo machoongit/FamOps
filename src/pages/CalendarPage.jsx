@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 // pages/CalendarPage.jsx
 import { useState } from 'react'
 import { useAuth } from '../AuthContext'
@@ -12,6 +13,7 @@ const VISIBILITY_OPTS = [
 ]
 
 export default function CalendarPage() {
+  const navigate = useNavigate()
   const { currentUser, isParent, isKid, users, calendars, saveCalendars, settings } = useAuth()
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState(null)
@@ -81,8 +83,9 @@ export default function CalendarPage() {
 
   return (
     <PageWrap>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-        <div style={{ fontFamily: "'Fredoka One',cursive", fontSize: '1.5rem', color }}>📅 Calendar</div>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:22 }}>
+        <button onClick={()=>navigate('/home')} style={{ background:'rgba(255,255,255,.07)', border:'none', color:'#fff', fontWeight:800, fontSize:'.82rem', padding:'7px 14px', borderRadius:999, cursor:'pointer' }}>← Home</button>
+        <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:'1.5rem', color, flex:1 }}>📅 Calendar</div>
         <Btn sm onClick={() => setModal('add')}>+ Add Event</Btn>
       </div>
 
@@ -146,7 +149,7 @@ export default function CalendarPage() {
             </>
           )}
 
-          <Input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder='Event name' style={{ marginBottom: 10 }} autoFocus />
+          <Input value={evTitle} onChange={e => setEvTitle(e.target.value)} placeholder='Event name' style={{ marginBottom: 10 }} />
           <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
             <Input value={evDate} onChange={e => setEvDate(e.target.value)} type='date' style={{ flex: 1 }} />
             <Input value={evTime} onChange={e => setEvTime(e.target.value)} type='time' style={{ flex: 1 }} />

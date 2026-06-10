@@ -1,81 +1,60 @@
 // App.jsx — FamOps root
-import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
-import LoginPage   from './pages/LoginPage'
-import HomPage     from './pages/HomePage'
-import ChoresPage  from './pages/ChoresPage'
-import LearnPage   from './pages/LearnPage'
-import CalendarPage from './pages/CalendarPage'
-import ProfilePage from './pages/ProfilePage'
-import ParentPage  from './pages/ParentPage'
+import LoginPage      from './pages/LoginPage'
+import HomePage       from './pages/HomePage'
+import ChoresPage     from './pages/ChoresPage'
+import LearnPage      from './pages/LearnPage'
+import CalendarPage   from './pages/CalendarPage'
+import ProfilePage    from './pages/ProfilePage'
+import ParentPage     from './pages/ParentPage'
+import DisplayPage    from './pages/DisplayPage'
+import OnboardingPage from './pages/OnboardingPage'
+import MealPage       from './pages/MealPage'
 
-const NAV = [
-  { to: '/home',     icon: '🏠', label: 'Home'    },
-  { to: '/chores',   icon: '✅', label: 'Chores'  },
-  { to: '/learn',    icon: '📚', label: 'Learn'   },
-  { to: '/calendar', icon: '📅', label: 'Calendar'},
-  { to: '/profile',  icon: '👤', label: 'Me'      },
-]
-
-const BottomNav = () => {
-  const { currentUser, isParent, settings } = useAuth()
-  const color = settings?.primaryColor || '#f5a623'
-  if (!currentUser) return null
+export const BackBtn = ({ label = 'Home' }) => {
+  const navigate = useNavigate()
   return (
-    <nav style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0,
-      background: '#111', borderTop: '1px solid rgba(255,255,255,.07)',
-      display: 'flex', zIndex: 50, paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      {NAV.map(({ to, icon, label }) => (
-        <NavLink key={to} to={to} style={({ isActive }) => ({
-          flex: 1, padding: '10px 4px 8px', textAlign: 'center', textDecoration: 'none',
-          fontFamily: 'Nunito,sans-serif', fontWeight: 800, fontSize: '.65rem',
-          color: isActive ? color : '#555',
-          borderTop: isActive ? `2px solid ${color}` : '2px solid transparent',
-          transition: 'all .2s',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-        })}>
-          <span style={{ fontSize: '1.2rem' }}>{icon}</span>
-          {label}
-        </NavLink>
-      ))}
-      {isParent && (
-        <NavLink to='/parent' style={({ isActive }) => ({
-          flex: 1, padding: '10px 4px 8px', textAlign: 'center', textDecoration: 'none',
-          fontFamily: 'Nunito,sans-serif', fontWeight: 800, fontSize: '.65rem',
-          color: isActive ? '#9c27b0' : '#555',
-          borderTop: isActive ? '2px solid #9c27b0' : '2px solid transparent',
-          transition: 'all .2s',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-        })}>
-          <span style={{ fontSize: '1.2rem' }}>⚙️</span>
-          Control
-        </NavLink>
-      )}
-    </nav>
+    <button onClick={() => navigate('/home')} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      background: 'rgba(255,255,255,.07)', border: 'none',
+      color: '#fff', fontFamily: 'Nunito,sans-serif', fontWeight: 800,
+      fontSize: '.85rem', padding: '8px 16px', borderRadius: 999,
+      cursor: 'pointer', marginBottom: 18,
+    }}>← {label}</button>
   )
 }
 
-const AppInner = () => {
-  const { currentUser } = useAuth()
+// Guard — blocks unauthenticated users and enforces kid section access controls
+const Guard = ({ children, section }) => {
+  const { currentUser, isKid, settings } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
+  if (!currentUser) { navigate('/'); return null }
+  // If a section is toggled off in parent controls, redirect kids to home
+  if (isKid && section && settings?.kidControls?.[section] === false) {
+    navigate('/home'); return null
+  }
+  return children
+}
 
+const AppInner = () => {
+  const { users, onboardingDone } = useAuth()
   return (
-    <>
-      <Routes>
-        <Route path='/'          element={<LoginPage />} />
-        <Route path='/home'      element={currentUser ? <HomPage />      : <LoginPage />} />
-        <Route path='/chores'    element={currentUser ? <ChoresPage />   : <LoginPage />} />
-        <Route path='/learn/*'   element={currentUser ? <LearnPage />    : <LoginPage />} />
-        <Route path='/calendar'  element={currentUser ? <CalendarPage /> : <LoginPage />} />
-        <Route path='/profile'   element={currentUser ? <ProfilePage />  : <LoginPage />} />
-        <Route path='/parent/*'  element={currentUser ? <ParentPage />   : <LoginPage />} />
-        <Route path='*'          element={<LoginPage />} />
-      </Routes>
-      <BottomNav />
-    </>
+    <Routes>
+      <Route path='/setup'    element={<OnboardingPage />} />
+      <Route path='/display'  element={<DisplayPage />} />
+      <Route path='/' element={
+        users.length === 0 && !onboardingDone ? <OnboardingPage /> : <LoginPage />
+      } />
+      <Route path='/home'     element={<Guard><HomePage /></Guard>} />
+      <Route path='/chores'   element={<Guard><ChoresPage /></Guard>} />
+      <Route path='/learn/*'  element={<Guard section='learn'><LearnPage /></Guard>} />
+      <Route path='/calendar' element={<Guard section='calendar'><CalendarPage /></Guard>} />
+      <Route path='/profile'  element={<Guard><ProfilePage /></Guard>} />
+      <Route path='/meals'    element={<Guard section='meals'><MealPage /></Guard>} />
+      <Route path='/parent/*' element={<Guard><ParentPage /></Guard>} />
+      <Route path='*'         element={<LoginPage />} />
+    </Routes>
   )
 }
 

@@ -1,13 +1,17 @@
 // components.jsx — FamOps shared UI
 import { useState } from 'react'
-import { AVATARS, COLORS, RANKS, getRank } from './constants'
+import { AVATARS, COLORS, getRank } from './constants'
+import { hashPin, verifyPin } from './security'
 
 // ── Layout ────────────────────────────────────────────────────────────────
-export const PageWrap = ({ children }) => (
-  <div style={{ maxWidth: 960, margin: '0 auto', padding: '16px 14px 90px' }}>
-    {children}
-  </div>
-)
+export const PageWrap = ({ children, noBack }) => {
+  const navigate = typeof window !== 'undefined' ? null : null
+  return (
+    <div className='page-wrap'>
+      {children}
+    </div>
+  )
+}
 
 // ── Typography ─────────────────────────────────────────────────────────────
 export const AppLogo = ({ name = 'FamOps', color = '#f5a623' }) => (
@@ -66,15 +70,16 @@ export const Btn = ({ children, variant = 'gold', sm, full, style, onClick, disa
 )
 
 // ── Inputs ─────────────────────────────────────────────────────────────────
-export const Input = ({ value, onChange, placeholder, type, maxLength, style, autoFocus, rows, name }) => {
+export const Input = ({ value, onChange, placeholder, type, maxLength, style, autoFocus, rows, name, onKeyDown, inputMode, id }) => {
   const base = {
     background: '#141414', border: '1.5px solid rgba(255,255,255,.1)',
     borderRadius: 10, padding: '10px 14px', color: '#fff',
     fontFamily: 'Nunito,sans-serif', fontWeight: 600, fontSize: '.92rem',
-    outline: 'none', width: '100%', transition: 'border-color .2s', ...style
+    outline: 'none', width: '100%', transition: 'border-color .2s',
+    WebkitAppearance: 'none', ...style
   }
-  if (rows) return <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows} style={{ ...base, resize: 'vertical' }} autoFocus={autoFocus} />
-  return <input value={value} onChange={onChange} placeholder={placeholder} type={type || 'text'} maxLength={maxLength} style={base} autoFocus={autoFocus} name={name} />
+  if (rows) return <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows} style={{ ...base, resize: 'vertical' }} autoFocus={autoFocus} onKeyDown={onKeyDown} id={id} />
+  return <input value={value} onChange={onChange} placeholder={placeholder} type={type || 'text'} maxLength={maxLength} style={base} autoFocus={autoFocus} name={name} onKeyDown={onKeyDown} inputMode={inputMode} id={id} />
 }
 
 export const Select = ({ value, onChange, children, style }) => (
@@ -149,17 +154,16 @@ export const PinScreen = ({ user, onSuccess, onBack }) => {
   const [pin, setPin] = useState('')
   const [err, setErr] = useState(false)
 
-  const handle = (k) => {
+  const handle = async (k) => {
     if (k === 'del') { setPin(p => p.slice(0, -1)); setErr(false); return }
     const next = pin + k
     setPin(next)
     if (next.length === 4) {
-      if (user.pin === next) { onSuccess(user) }
+      const ok = await verifyPin(user, next)
+      if (ok) { onSuccess(user) }
       else { setErr(true); setTimeout(() => { setPin(''); setErr(false) }, 700) }
     }
   }
-
-  const rank = getRank(0)
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, textAlign: 'center', padding: 20, background: '#0a0a0a' }}>
@@ -191,28 +195,37 @@ export const PinScreen = ({ user, onSuccess, onBack }) => {
 }
 
 // ── Add User Modal ─────────────────────────────────────────────────────────
-export const AddUserModal = ({ onAdd, onClose }) => {
-  const [name,   setName]   = useState('')
-  const [avatar, setAvatar] = useState('🦁')
-  const [color,  setColor]  = useState('#f5a623')
-  const [role,   setRole]   = useState('kid')
-  const [pin,    setPin]    = useState('')
-  const [pin2,   setPin2]   = useState('')
-  const [err,    setErr]    = useState('')
+export const AddUserModal = ({ onAdd, onClose, existingParents = [], isParentSession = false }) => {
+  const [name,       setName]       = useState('')
+  const [avatar,     setAvatar]     = useState('🦁')
+  const [color,      setColor]      = useState('#f5a623')
+  const [role,       setRole]       = useState('kid')
+  const [pin,        setPin]        = useState('')
+  const [pin2,       setPin2]       = useState('')
+  const [parentPin,  setParentPin]  = useState('')
+  const [err,        setErr]        = useState('')
 
-  const submit = () => {
+  const submit = async () => {
     if (!name.trim()) { setErr('Enter a name'); return }
     if (pin.length < 4) { setErr('PIN must be 4 digits'); return }
     if (pin !== pin2) { setErr("PINs don't match"); return }
-    onAdd({ id: 'u' + Date.now(), name: name.trim(), avatar, color, role, pin, joinedDate: new Date().toISOString().slice(0, 10) })
+    if (role === 'parent' && existingParents.length > 0 && !isParentSession) {
+      const verified = await Promise.all(existingParents.map((p) => verifyPin(p, parentPin))).then((results) => results.some(Boolean))
+      if (!verified) { setErr('Enter an existing parent PIN to add a parent account'); return }
+    }
+    const pinHash = await hashPin(pin)
+    onAdd({ id: 'u' + Date.now(), name: name.trim(), avatar, color, role, pin: pinHash, pinHash, joinedDate: new Date().toISOString().slice(0, 10) })
   }
 
   return (
     <Modal onClose={onClose}>
       <ModalTitle>Add Family Member</ModalTitle>
+      {/* Only show parent option if already a parent session, or no parents exist yet */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <Btn sm variant={role === 'kid' ? 'gold' : 'ghost'} onClick={() => setRole('kid')}>Kid</Btn>
-        <Btn sm variant={role === 'parent' ? 'purple' : 'ghost'} onClick={() => setRole('parent')}>Parent</Btn>
+        {(isParentSession || existingParents.length === 0) && (
+          <Btn sm variant={role === 'parent' ? 'purple' : 'ghost'} onClick={() => setRole('parent')}>Parent</Btn>
+        )}
       </div>
       <Input value={name} onChange={e => setName(e.target.value)} placeholder='Name' style={{ marginBottom: 12 }} autoFocus />
 
@@ -238,7 +251,13 @@ export const AddUserModal = ({ onAdd, onClose }) => {
       </div>
 
       <Input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} placeholder='4-digit PIN' type='password' maxLength={4} style={{ marginBottom: 10 }} />
-      <Input value={pin2} onChange={e => setPin2(e.target.value.replace(/\D/g, ''))} placeholder='Confirm PIN' type='password' maxLength={4} style={{ marginBottom: err ? 10 : 18 }} />
+      <Input value={pin2} onChange={e => setPin2(e.target.value.replace(/\D/g, ''))} placeholder='Confirm PIN' type='password' maxLength={4} style={{ marginBottom: 10 }} />
+
+      {/* Require parent verification to add parent account */}
+      {role === 'parent' && existingParents.length > 0 && !isParentSession && (
+        <Input value={parentPin} onChange={e => setParentPin(e.target.value.replace(/\D/g,''))} placeholder='Enter existing parent PIN to verify' type='password' maxLength={4} style={{ marginBottom: 10 }} />
+      )}
+
       {err && <div style={{ color: '#e53935', fontWeight: 800, fontSize: '.82rem', marginBottom: 14 }}>{err}</div>}
 
       <div style={{ display: 'flex', gap: 10 }}>
@@ -250,8 +269,8 @@ export const AddUserModal = ({ onAdd, onClose }) => {
 }
 
 // ── User Card (for login screen) ───────────────────────────────────────────
-export const UserCard = ({ user, xp, onClick }) => {
-  const rank = getRank(xp || 0)
+export const UserCard = ({ user, xp, onClick, ranks }) => {
+  const rank = getRank(xp || 0, ranks)
   return (
     <div onClick={onClick} style={{
       background: '#1c1c1c', borderRadius: 16, padding: '20px 14px',
@@ -270,8 +289,8 @@ export const UserCard = ({ user, xp, onClick }) => {
 }
 
 // ── Rank Display ──────────────────────────────────────────────────────────
-export const RankBadge = ({ xp, compact }) => {
-  const rank = getRank(xp || 0)
+export const RankBadge = ({ xp, compact, ranks }) => {
+  const rank = getRank(xp || 0, ranks)
   if (compact) return (
     <span style={{ fontSize: '.75rem', fontWeight: 800, color: rank.color }}>
       {rank.icon} {rank.name}
